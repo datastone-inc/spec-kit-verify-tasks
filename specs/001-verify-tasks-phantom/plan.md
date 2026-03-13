@@ -77,8 +77,8 @@ specs/[###-feature]/
 commands/
 └── speckit.verify-tasks.md   # The single slash command (prompt-driven)
 
-scripts/
-└── check-prerequisites.sh    # Standard spec-kit prerequisite check (if needed)
+# Note: check-prerequisites.sh is a pre-existing spec-kit core dependency
+# at .specify/scripts/bash/check-prerequisites.sh — NOT an extension deliverable.
 
 tests/
 ├── fixtures/
