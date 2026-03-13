@@ -87,21 +87,21 @@ The command accepts a free-text argument string parsed for the following options
 
 ### ❌ NOT_FOUND
 
-| Task | Summary | Details |
+| Task | Verdict | Summary |
 |------|---------|---------|
-| {task_id} | {one-line summary} | {expandable per-layer detail} |
+| {task_id} | ❌ NOT_FOUND | {one-line summary} |
 
 ### 🔍 PARTIAL
 
-| Task | Summary | Details |
+| Task | Verdict | Summary |
 |------|---------|---------|
-| {task_id} | {one-line summary} | {expandable per-layer detail} |
+| {task_id} | 🔍 PARTIAL | {one-line summary} |
 
 ### ⚠️ WEAK
 
-| Task | Summary | Details |
+| Task | Verdict | Summary |
 |------|---------|---------|
-| {task_id} | {one-line summary} | {expandable per-layer detail} |
+| {task_id} | ⚠️ WEAK | {one-line summary} |
 
 ---
 
@@ -110,6 +110,13 @@ The command accepts a free-text argument string parsed for the following options
 | Task | Verdict | Summary |
 |------|---------|---------|
 | {task_id} | ✅ VERIFIED | {one-line summary} |
+
+---
+
+## Unassessable Items
+
+| Task | Verdict | Summary |
+|------|---------|---------|
 | {task_id} | ⏭️ SKIPPED | {one-line summary} |
 ```
 

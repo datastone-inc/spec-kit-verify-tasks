@@ -110,19 +110,39 @@ A task reaches `VERIFIED` only when ALL applicable mechanical layers (1–4) pro
 
 ## Development: Running Test Fixtures
 
-The `tests/` directory contains synthetic test fixtures:
+The `tests/` directory contains synthetic test fixtures with repo-relative file paths:
 
 ```
 tests/
 ├── fixtures/
-│   ├── phantom-tasks/     # tasks.md with planted phantom completions
-│   ├── genuine-tasks/     # tasks.md where all tasks are genuinely complete
-│   └── edge-cases/        # Malformed entries, no file paths, behavioral-only tasks
-└── expected-verdicts.md   # Documented expected verdicts for validation
+│   ├── phantom-tasks/     # 10 tasks: 5 genuine + 5 planted phantom completions
+│   ├── genuine-tasks/     # 10 tasks: all genuinely implemented
+│   ├── edge-cases/        # Behavioral-only, malformed, glob, and multi-file tasks
+│   └── scalability/       # 50 tasks: session overflow stress test
+└── expected-verdicts.md   # Expected evidence level for every fixture task
 ```
 
-To validate the extension:
+### Running a fixture
 
-1. Copy a test fixture's `tasks.md` into a feature spec directory
-2. Run `/speckit.verify-tasks`
-3. Compare the report against `expected-verdicts.md`
+1. **Commit** any in-progress work so you can cleanly revert afterward:
+   ```bash
+   git add -A && git commit -m "WIP: save before fixture test"
+   ```
+
+2. **Copy** a fixture's `tasks.md` over the feature spec's `tasks.md`:
+   ```bash
+   cp tests/fixtures/phantom-tasks/tasks.md specs/001-verify-tasks-phantom/tasks.md
+   ```
+
+3. **Run** `/speckit.verify-tasks` in an agent chat session (no fresh session needed — there is no implementation context to bias results)
+
+4. **Compare** the generated `specs/001-verify-tasks-phantom/verify-tasks-report.md` against `tests/expected-verdicts.md`
+
+5. **Revert** all test changes:
+   ```bash
+   git checkout .
+   ```
+
+### Why fixture paths are repo-relative
+
+Each fixture's `tasks.md` references files using full repo-relative paths (e.g., `tests/fixtures/phantom-tasks/src/auth.py` instead of `src/auth.py`). This is because `/speckit.verify-tasks` resolves file paths from the repository root, not from the fixture directory.

@@ -30,6 +30,8 @@ $ARGUMENTS
 
 ## Outline
 
+**Display the following advisory banner to the user before proceeding:**
+
 > ⚠️ **FRESH SESSION ADVISORY**: For maximum reliability, run `/speckit.verify-tasks`
 > in a **separate** agent session from the one that performed `/speckit.implement`.
 > The implementing agent's context biases it toward confirming its own work.
@@ -97,7 +99,7 @@ From `$FEATURE_DIR/tasks.md`, extract all tasks marked `[X]` (completed). For ea
    |-------|---------|
    | `branch` | `git diff "$BASE_REF"...HEAD --name-only` |
    | `uncommitted` | `git diff HEAD --name-only` |
-   | `plan-anchored` | Extract `**Date**: {YYYY-MM-DD}` from `$FEATURE_DIR/plan.md`; run `git log --since="{DATE}" --name-only --pretty=""` |
+   | `plan-anchored` | Extract `**Date**: {YYYY-MM-DD}` from `$FEATURE_DIR/plan.md`; run `git log --since="{DATE}" --name-only --pretty=""`. If `plan.md` does not exist or contains no `**Date**:` field, emit `WARNING: plan.md not found or missing date — falling back to scope=all` and use `all` scope instead. |
    | `all` (default) | `git diff "$BASE_REF"..HEAD --name-only` plus `git status --short` for uncommitted changes |
 
 5. Collect the list of **changed files** for the scope. Store as `CHANGED_FILES`.
@@ -112,8 +114,16 @@ For each task in the task list:
 1. For each `file_path` in the task's extracted paths:
    - Expand any glob patterns: `find . -path "./{glob}" 2>/dev/null`
    - Check if the file/directory exists: `test -f {path} || test -d {path}`
-   - If **all** referenced paths exist → layer result: `positive`
-   - If **any** referenced path is missing → layer result: `negative`; record the missing path(s).
+   - **Rename detection**: If a referenced file does not exist and `GIT_AVAILABLE=true`, check for renames:
+
+     ```sh
+     git log --diff-filter=R --summary -- "{file_path}" 2>/dev/null
+     git diff "$BASE_REF"..HEAD --diff-filter=R --name-status 2>/dev/null | grep "{filename}"
+     ```
+
+     If a rename is detected, record the new path in the layer detail (e.g., `"src/auth.py" renamed to "src/authentication.py"`) and use the new path for subsequent layers.
+   - If **all** referenced paths exist (or were resolved via rename) → layer result: `positive`
+   - If **any** referenced path is missing (and no rename detected) → layer result: `negative`; record the missing path(s).
    - If the task has no file paths → layer result: `not_applicable`
 2. Record `VerificationLayerResult` for `file_existence` per task.
 
@@ -136,40 +146,61 @@ For each task (skip if `GIT_AVAILABLE=false`):
 
 ### Step 6 (Layer 3): Content Pattern Matching
 
+**Context-sensitivity gate**: Before running content pattern matching, assess how "symbols" manifest in the artifact type referenced by the task. Adapt the search strategy to match the artifact:
+
+| Artifact Type | What counts as a "symbol" | Search strategy |
+|---------------|--------------------------|----------------|
+| Application code (`.py`, `.js`, `.ts`, `.java`, `.go`, `.rs`, etc.) | Function names, class names, method names, type definitions, exported constants | `grep -n "def {symbol}\|function {symbol}\|class {symbol}\|export.*{symbol}\|const {symbol}"` |
+| SQL files (`.sql`, `.ddl`) | Table names, column names, constraint names, index names | `grep -n "CREATE.*{symbol}\|ALTER.*{symbol}\|INSERT.*{symbol}\|{symbol}"` |
+| Configuration files (`.yml`, `.yaml`, `.toml`, `.ini`, `.json`, `.env`) | Key names, section headers, environment variable names | `grep -n "{symbol}"` (plain text match — keys are typically unique strings) |
+| Shell scripts (`.sh`, `.bash`) | Function names, variable names | `grep -n "{symbol}()\|{symbol}=\|export {symbol}"` |
+| Markdown/prompt files (`.md`, `.prompt.md`) | Section headings, step identifiers, key phrases | `grep -n "## .*{symbol}\|### .*{symbol}\|{symbol}"` |
+| CI/CD files (`.yml` in `.github/`, `Dockerfile`, `Makefile`) | Job names, stage names, target names, directives | `grep -n "{symbol}"` |
+| HTML/template files | Element IDs, component names, class names | `grep -n "id=.*{symbol}\|class=.*{symbol}\|{symbol}"` |
+
+If the artifact type is not listed above, fall back to plain `grep -n "{symbol}"` — a direct text match is always valid as a baseline.
+
+> **Accuracy note**: The content pattern matching layer is strongest on application source code where function/class definitions provide clear grep targets. For non-code artifacts (SQL, config, markdown, shell scripts, binary/generated files), matches are less precise and may produce false positives. This is acceptable under the asymmetric error model — a false flag is reviewed and dismissed in seconds during the walkthrough; a missed phantom can ship to production. When Layer 3 results seem uncertain for a non-code artifact, record the result but note the reduced confidence in the layer detail.
+
 For each task:
 
-1. For each `code_reference` (symbol name) extracted from the task:
-   - Search each referenced file:
-
-     ```sh
-     grep -n "{symbol}" {file_path}
-     ```
-
-   - Also search with common definition prefixes to distinguish declaration from usage:
-
-     ```sh
-     grep -n "def {symbol}\|function {symbol}\|class {symbol}\|export.*{symbol}\|const {symbol}" {file_path}
-     ```
-
-2. If **all** expected symbols are found in the referenced files → layer result: `positive`
-3. If **some** symbols are found but others are missing → layer result: `negative` (partial miss)
-4. If **no** code references exist in the task → layer result: `not_applicable`
-5. Record `VerificationLayerResult` for `content_match` per task.
+1. **Determine artifact type** from the file extensions referenced in the task.
+2. For each `code_reference` (symbol name) extracted from the task:
+   - **Skip files that Layer 1 determined do not exist** (and were not resolved via rename). Only grep files confirmed present.
+   - Search each referenced file using the **artifact-appropriate strategy** from the table above.
+   - If the artifact type supports definition-prefix matching (application code), also search with definition prefixes to distinguish declaration from usage.
+3. If **all** expected symbols are found in the referenced files → layer result: `positive`
+4. If **some** symbols are found but others are missing → layer result: `negative` (partial miss)
+5. If **no** code references exist in the task → layer result: `not_applicable`
+6. Record `VerificationLayerResult` for `content_match` per task.
 
 ---
 
 ### Step 7 (Layer 4): Dead-Code Detection
 
-For each task where Layer 3 found symbol definitions (`positive` or partial):
+**Context-sensitivity gate**: Before running dead-code checks for a task, assess whether cross-file referencing is *expected* for the artifact type:
+
+- **`not_applicable`** (skip this layer) when the task creates artifacts that are consumed by runtime, tooling, or convention rather than imported by application code:
+  - SQL migrations, seed files, schema definitions (`.sql`, `.ddl`)
+  - Configuration files (`.yml`, `.yaml`, `.toml`, `.ini`, `.json`, `.env`)
+  - CI/CD pipelines, Dockerfiles, Makefiles, shell scripts
+  - Prompt/command files (`.md` command files, `.prompt.md`)
+  - Static assets, HTML templates, CSS files
+  - Test files (test functions are invoked by a test runner, not imported by application code)
+- **Applicable** (proceed with checks below) when the task creates functions, classes, methods, modules, or API endpoints that are expected to be imported/called/referenced by other application code.
+
+When in doubt about whether an artifact type needs wiring, **default to applicable** — this preserves the asymmetric error model (false positives are acceptable, false negatives are not).
+
+For each task where Layer 3 found symbol definitions (`positive` or partial) **and** the context-sensitivity gate determined dead-code detection is applicable:
 
 1. For each found symbol:
    - **Cross-repository reference scan** — search for the symbol outside its own definition file:
 
      ```sh
-     git grep -n "{symbol}" -- . 2>/dev/null || grep -rn "{symbol}" .
+     git grep -n "{symbol}" -- . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=__pycache__ --exclude-dir=.venv --exclude-dir=dist --exclude-dir=build 2>/dev/null || grep -rn "{symbol}" . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=vendor --exclude-dir=__pycache__ --exclude-dir=.venv --exclude-dir=dist --exclude-dir=build
      ```
 
-     Exclude the file where the symbol is defined.
+     Also check for project-specific directories to exclude: if `.gitignore` exists, respect its patterns for filtering search results. Exclude the file where the symbol is defined.
    - **Filter false positives** — discard matches that are:
      - Inside comment lines (`#`, `//`, `/*`, `<!--`)
      - Inside string literals (surrounded by `"` or `'`)
@@ -218,6 +249,7 @@ For each task, combine the five layer results into a final `TaskVerdict` using t
 - Ambiguous evidence → `PARTIAL` or `WEAK`, **never** `VERIFIED`
 - `SKIPPED` tasks are not failures — they are behavioral-only tasks with no mechanically checkable outputs
 - `not_applicable` layers do not count against `VERIFIED`; only `negative` layers prevent it
+- `skipped` layers (e.g., Layer 2 when git is unavailable, Layer 4 when context-sensitivity gate deems it not applicable) are treated identically to `not_applicable` — they do not count as applicable and do not prevent `VERIFIED`. A skipped layer represents an environment limitation or inapplicable check, not an evidence gap.
 
 ---
 
@@ -256,25 +288,25 @@ Report structure:
 
 ### ❌ NOT_FOUND
 
-| Task | Summary | Details |
+| Task | Verdict | Summary |
 |------|---------|---------|
-| {task_id} | {one-line summary} | {key missing evidence} |
+| {task_id} | ❌ NOT_FOUND | {one-line summary} |
 
 {per-task detail block for each NOT_FOUND task}
 
 ### 🔍 PARTIAL
 
-| Task | Summary | Details |
+| Task | Verdict | Summary |
 |------|---------|---------|
-| {task_id} | {one-line summary} | {which layers passed vs failed} |
+| {task_id} | 🔍 PARTIAL | {one-line summary} |
 
 {per-task detail block for each PARTIAL task}
 
 ### ⚠️ WEAK
 
-| Task | Summary | Details |
+| Task | Verdict | Summary |
 |------|---------|---------|
-| {task_id} | {one-line summary} | {why evidence is weak} |
+| {task_id} | ⚠️ WEAK | {one-line summary} |
 
 {per-task detail block for each WEAK task}
 
@@ -285,6 +317,13 @@ Report structure:
 | Task | Verdict | Summary |
 |------|---------|---------|
 | {task_id} | ✅ VERIFIED | {one-line summary} |
+
+---
+
+## Unassessable Items
+
+| Task | Verdict | Summary |
+|------|---------|---------|
 | {task_id} | ⏭️ SKIPPED | {one-line summary} |
 ```
 

@@ -65,6 +65,16 @@ After `/speckit.implement` finishes, you will be prompted automatically:
 
 The hook is optional — open a new session and run `/speckit.verify-tasks` there.
 
+To disable the hook, set `enabled: false` in `extensions.yml`:
+
+```yaml
+hooks:
+  after_implement:
+    enabled: false   # set to true to re-enable
+```
+
+To re-enable, set `enabled: true` (or remove the line — `enabled: true` is the default).
+
 ### Options
 
 | Option | Format | Default | Description |
@@ -130,6 +140,27 @@ tests/
   prompts/                     # Prompt mode files (*.prompt.md)
 ```
 
+## Testing with fixtures
+
+Each fixture's `tasks.md` uses repo-relative paths so the command can resolve files correctly when run from this repository.
+
+```bash
+# 1. Commit current work
+git add -A && git commit -m "WIP: save before fixture test"
+
+# 2. Copy a fixture's tasks.md over the feature spec's tasks.md
+cp tests/fixtures/phantom-tasks/tasks.md specs/001-verify-tasks-phantom/tasks.md
+
+# 3. Run /speckit.verify-tasks in an agent chat session
+
+# 4. Compare verify-tasks-report.md against tests/expected-verdicts.md
+
+# 5. Revert all test changes
+git checkout .
+```
+
+See `tests/expected-verdicts.md` for the expected verdict of every task in every fixture and pass/fail criteria.
+
 ## Design principles
 
 The extension is governed by eight constitutional principles. The most critical:
@@ -141,12 +172,35 @@ The extension is governed by eight constitutional principles. The most critical:
 
 See [`.specify/memory/constitution.md`](.specify/memory/constitution.md) for the full set of principles.
 
+## Complementary to `verify-tasks`
+
+### The `spec-kit-verify` community extension
+
+[spec-kit-verify](https://github.com/ismaelJimenez/spec-kit-verify) asks: "Does the implementation satisfy the spec?" It's a broad quality gate that checks requirement coverage, test coverage, spec intent alignment, and constitution compliance.
+
+**verify-tasks** asks: "Did the agent actually do what it claimed to do?" It takes each individual `[X]`-marked task, traces it to specific files and symbols, and verifies mechanical evidence of implementation through a 5-layer cascade before falling back to semantic assessment.
+
+| | spec-kit-verify | verify-tasks |
+|---|---|---|
+| **Unit of analysis** | Spec requirements, scenarios, constitution | Individual `[X]` tasks in tasks.md |
+| **Verification method** | Agent semantic assessment across 7 categories | Mechanical cascade (grep, find, git diff), semantic only as last resort |
+| **Error model** | Balanced severity reporting | Asymmetric: missed phantoms are catastrophic, false flags are acceptable |
+| **What it catches** | Spec-implementation misalignment | Tasks marked done that were never implemented |
+| **Fresh-session requirement** | No | Yes, by design |
+
+The two extensions are complementary. Run `verify` to check if the implementation is *correct*. Run `verify-tasks` to check if it's *complete*. A phantom completion will likely pass `verify` (the code that exists is fine) but will be caught by `verify-tasks` (the specific task's file was never created or modified).
+
+### Code review and testing
+
+The `verify-tasks` command confirms that code *exists and is wired up*, not that it's correct, efficient, secure, or well-tested. A function that exists, is imported, and appears in the diff will pass all five layers even if it has bugs. Always pair verification with code review and a thorough test suite.
+
 ## Requirements
 
 - A spec-kit project with a `tasks.md` inside a feature directory
 - An AI agent that supports spec-kit slash commands (Claude Code, GitHub Copilot, Gemini CLI, Cursor, Windsurf, etc.)
 - `git` (optional; layers 2 and 4 are skipped gracefully if unavailable)
 - The spec-kit prerequisites script at `.specify/scripts/bash/check-prerequisites.sh`
+- The following spec-kit core commands must have been run first: `speckit.specify`, `speckit.plan`, `speckit.tasks`, `speckit.implement`. These produce the artifacts (`tasks.md`, `plan.md`, `spec.md`) that `/speckit.verify-tasks` reads.
 
 ## Troubleshooting
 
@@ -161,6 +215,23 @@ See [`.specify/memory/constitution.md`](.specify/memory/constitution.md) for the
 | `WARNING: No date found in plan.md -- falling back to scope=all` | `plan.md` exists but has no `**Date**: YYYY-MM-DD` field | Add a date field to `plan.md`, or use a different scope |
 | `WARNING: Task ID not found: {id} -- skipping.` | A task ID passed as an argument does not exist in `tasks.md` | Check the ID spelling; use `/speckit.verify-tasks` without arguments to verify all tasks |
 | `ERROR: Cannot write report to {path}: {reason}` | File system permission or path problem | The report is printed to stdout instead; check directory permissions |
+
+## Verification accuracy by artifact type
+
+The five-layer cascade is strongest on application source code (Python, JavaScript, TypeScript, Java, Go, etc.), where function names, class definitions, and import graphs give the mechanical layers clear signals.
+
+For other artifact types, the cascade adapts its search strategies but with decreasing precision:
+
+| Artifact type | Layers 1–2 (file + diff) | Layer 3 (content match) | Layer 4 (dead-code) | Overall confidence |
+|---------------|--------------------------|------------------------|---------------------|-------------------|
+| Application code | Strong | Strong | Strong | High |
+| SQL migrations, schemas | Strong | Moderate — searches for `CREATE`, `ALTER`, table names | Skipped (consumed by migration runner) | Moderate |
+| Config files (YAML, TOML, JSON, .env) | Strong | Moderate — plain text key matching | Skipped (consumed by runtime) | Moderate |
+| Shell scripts | Strong | Moderate — searches for function defs, variable assignments | Skipped (consumed by shell) | Moderate |
+| Markdown, prompt files | Strong | Weak — searches for section headings, key phrases | Skipped (consumed by agent) | Low–Moderate |
+| Binary/generated assets (images, PDFs, compiled output) | Strong (file exists) | Not applicable | Not applicable | Low — file existence only |
+
+**This is by design.** The asymmetric error model means the cascade will flag uncertain results as `PARTIAL` or `WEAK` rather than silently pass them. A `WEAK` verdict on a SQL migration task doesn't mean the migration is wrong — it means the tool couldn't mechanically confirm it and wants a human to glance at it. When you see `WEAK` or `PARTIAL` on non-code artifacts, check them briefly during the interactive walkthrough and skip if they look fine.
 
 ## Authors
 

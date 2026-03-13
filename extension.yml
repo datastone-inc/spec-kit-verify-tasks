@@ -26,6 +26,7 @@ provides:
 
 hooks:
   after_implement:
+    enabled: true
     command: "speckit.verify-tasks"
     optional: true
     prompt: "Run verify-tasks in a fresh session to check for phantom completions"
