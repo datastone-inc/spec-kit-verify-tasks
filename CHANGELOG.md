@@ -36,5 +36,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/expected-verdicts.md` — expected evidence level with rationale for every task in every fixture
 - `.markdownlint.json` configuration
 
-[Unreleased]: https://github.com/speckit/speckit-verify-tasks/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/speckit/speckit-verify-tasks/releases/tag/v1.0.0
+[Unreleased]: https://github.com/speckit/spec-kit-verify-tasks/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/speckit/spec-kit-verify-tasks/releases/tag/v1.0.0

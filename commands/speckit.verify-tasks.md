@@ -35,8 +35,7 @@ $ARGUMENTS
 > ⚠️ **FRESH SESSION ADVISORY**: For maximum reliability, run `/speckit.verify-tasks`
 > in a **separate** agent session from the one that performed `/speckit.implement`.
 > The implementing agent's context biases it toward confirming its own work.
-> This is even more important if the current session ran `/speckit.implement` just prior.
-> Open a fresh session, navigate to this repository, and invoke the command there.
+> Open a fresh session, navigate to this repository, and invoke `/speckit.verify-tasks` to verify completed tasks are backed by actual implementation.
 
 ---
 
@@ -493,3 +492,4 @@ This command uses ONLY the following capabilities. Verified available on all spe
 - ✅ Cursor — all features available via terminal
 - ✅ Windsurf — all features available via terminal
 -->
+

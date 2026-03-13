@@ -2,7 +2,7 @@
 <p align="center"><img src="assets/datastone_logo.png" width="300" alt="dataStone logo" /></p>
 <!-- markdownlint-enable MD033 MD041 -->
 
-# speckit-verify-tasks
+# spec-kit-verify-tasks
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![spec-kit](https://img.shields.io/badge/spec--kit-extension-blueviolet.svg)](https://github.com/speckit)
@@ -37,13 +37,13 @@ specify extension add verify-tasks
 Or install directly from a specific release:
 
 ```sh
-specify extension add verify-tasks --from https://github.com/speckit/speckit-verify-tasks/archive/refs/tags/v1.0.0.zip
+specify extension add verify-tasks --from https://github.com/speckit/spec-kit-verify-tasks/archive/refs/tags/v1.0.0.zip
 ```
 
 For local development:
 
 ```sh
-specify extension add --dev /path/to/speckit-verify-tasks
+specify extension add --dev /path/to/spec-kit-verify-tasks
 ```
 
 ## Usage

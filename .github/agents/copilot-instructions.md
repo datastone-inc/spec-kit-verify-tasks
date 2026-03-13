@@ -1,4 +1,4 @@
-# speckit-verify-tasks Development Guidelines
+# spec-kit-verify-tasks Development Guidelines
 
 Auto-generated from all feature plans. Last updated: 2026-03-12
 
