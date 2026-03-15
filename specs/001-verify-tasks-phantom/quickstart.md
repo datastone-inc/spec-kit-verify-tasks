@@ -35,7 +35,7 @@ This installs:
 
 ### Basic: Verify All Completed Tasks
 
-```
+```text
 /speckit.verify-tasks
 ```
 
@@ -43,7 +43,7 @@ Verifies every `[X]` task in `tasks.md` using the `all` diff scope (most inclusi
 
 ### Targeted: Re-Verify Specific Tasks
 
-```
+```text
 /speckit.verify-tasks T-003 T-007
 ```
 
@@ -51,7 +51,7 @@ Only verifies the specified task IDs. Useful after fixing flagged items.
 
 ### Scoped: Use a Specific Diff Scope
 
-```
+```text
 /speckit.verify-tasks --scope branch
 ```
 
@@ -59,7 +59,7 @@ Options: `branch`, `uncommitted`, `plan-anchored`, `all` (default).
 
 ### Combined
 
-```
+```text
 /speckit.verify-tasks T-003 --scope uncommitted
 ```
 
@@ -112,7 +112,7 @@ A task reaches `VERIFIED` only when ALL applicable mechanical layers (1–4) pro
 
 The `tests/` directory contains synthetic test fixtures with repo-relative file paths:
 
-```
+```text
 tests/
 ├── fixtures/
 │   ├── phantom-tasks/     # 10 tasks: 5 genuine + 5 planted phantom completions
@@ -122,27 +122,4 @@ tests/
 └── expected-verdicts.md   # Expected evidence level for every fixture task
 ```
 
-### Running a fixture
-
-1. **Commit** any in-progress work so you can cleanly revert afterward:
-   ```bash
-   git add -A && git commit -m "WIP: save before fixture test"
-   ```
-
-2. **Copy** a fixture's `tasks.md` over the feature spec's `tasks.md`:
-   ```bash
-   cp tests/fixtures/phantom-tasks/tasks.md specs/001-verify-tasks-phantom/tasks.md
-   ```
-
-3. **Run** `/speckit.verify-tasks` in an agent chat session (no fresh session needed — there is no implementation context to bias results)
-
-4. **Compare** the generated `specs/001-verify-tasks-phantom/verify-tasks-report.md` against `tests/expected-verdicts.md`
-
-5. **Revert** all test changes:
-   ```bash
-   git checkout .
-   ```
-
-### Why fixture paths are repo-relative
-
-Each fixture's `tasks.md` references files using full repo-relative paths (e.g., `tests/fixtures/phantom-tasks/src/auth.py` instead of `src/auth.py`). This is because `/speckit.verify-tasks` resolves file paths from the repository root, not from the fixture directory.
+See `tests/expected-verdicts.md` for step-by-step instructions on running fixtures, expected verdicts for every task, and pass/fail criteria.

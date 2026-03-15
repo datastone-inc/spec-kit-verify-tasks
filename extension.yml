@@ -20,14 +20,15 @@ requires:
 
 provides:
   commands:
-    - name: "speckit.verify-tasks"
+    - name: "speckit.verify-tasks.run"
       file: "commands/speckit.verify-tasks.md"
       description: "Detect phantom completions by running a five-layer verification cascade against every completed task"
+      aliases: ["speckit.verify-tasks"]
 
 hooks:
   after_implement:
     enabled: true
-    command: "speckit.verify-tasks"
+    command: "speckit.verify-tasks.run"
     optional: true
     prompt: "Run verify-tasks in a fresh session to check for phantom completions"
     description: "Post-implementation phantom completion detector"

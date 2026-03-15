@@ -23,8 +23,8 @@ When a feature is marked "done" in `tasks.md`, there is no automatic check that 
 | 1 | File existence | `test -f` / `find` |
 | 2 | Git diff presence | `git diff`, `git log` |
 | 3 | Content pattern matching | `grep -n` for declared symbols |
-| 4 | Wiring / dead-code detection | `git grep` across the repo |
-| 5 | Semantic assessment | Agent reads and interprets code structure |
+| 4 | Dead-code detection | `grep -rn` for usage references beyond definition site |
+| 5 | Semantic assessment | Agent reads code for stubs, placeholders, and genuine behavior |
 
 Each task receives one of five verdicts: `✅ VERIFIED`, `🔍 PARTIAL`, `⚠️ WEAK`, `❌ NOT_FOUND`, or `⏭️ SKIPPED`.
 
@@ -109,6 +109,8 @@ After the report is written, the command enters a sequential walkthrough for eac
 
 Reply `done` at any point to end the walkthrough early. The agent presents exactly one item per turn and never reveals future items in advance.
 
+After the walkthrough completes, a `## Walkthrough Log` section is appended to the report with the disposition of each flagged item (investigated, fix proposed, skipped). The original verdict table is not modified — it serves as the audit record. If fixes were applied, re-run `/speckit.verify-tasks` for a clean re-evaluation.
+
 ## Repository structure
 
 ```text
@@ -142,24 +144,7 @@ tests/
 
 ## Testing with fixtures
 
-Each fixture's `tasks.md` uses repo-relative paths so the command can resolve files correctly when run from this repository.
-
-```bash
-# 1. Commit current work
-git add -A && git commit -m "WIP: save before fixture test"
-
-# 2. Copy a fixture's tasks.md over the feature spec's tasks.md
-cp tests/fixtures/phantom-tasks/tasks.md specs/001-verify-tasks-phantom/tasks.md
-
-# 3. Run /speckit.verify-tasks in an agent chat session
-
-# 4. Compare verify-tasks-report.md against tests/expected-verdicts.md
-
-# 5. Revert all test changes
-git checkout .
-```
-
-See `tests/expected-verdicts.md` for the expected verdict of every task in every fixture and pass/fail criteria.
+See `tests/expected-verdicts.md` for step-by-step instructions on running fixtures, expected verdicts for every task, and pass/fail criteria.
 
 ## Design principles
 
@@ -168,7 +153,7 @@ The extension is governed by eight constitutional principles. The most critical:
 - **Asymmetric Error Model**: a missed phantom is catastrophic; a false alarm is acceptable. Ambiguous evidence always yields `PARTIAL`/`WEAK`, never `VERIFIED`.
 - **Agent Independence**: verification must run in a session separate from the implementing agent to avoid confirmation bias.
 - **Pure Prompt Architecture**: 100% prompt-driven. No Python scripts or external binaries; only shell tools (`grep`, `find`, `git`). Works across Claude Code, GitHub Copilot, Gemini CLI, Cursor, Windsurf, and other spec-kit agents.
-- **Verification Cascade**: mechanical layers (1-4) always take precedence. Semantic assessment (layer 5) alone can never produce a `VERIFIED` verdict.
+- **Verification Cascade**: mechanical layers (1-4) establish baseline evidence. Semantic assessment (layer 5) runs when no mechanical layer returned `negative`, and can downgrade `VERIFIED` to `PARTIAL` when it detects stubs or placeholders.
 
 See [`.specify/memory/constitution.md`](.specify/memory/constitution.md) for the full set of principles.
 
@@ -183,7 +168,7 @@ See [`.specify/memory/constitution.md`](.specify/memory/constitution.md) for the
 | | spec-kit-verify | verify-tasks |
 |---|---|---|
 | **Unit of analysis** | Spec requirements, scenarios, constitution | Individual `[X]` tasks in tasks.md |
-| **Verification method** | Agent semantic assessment across 7 categories | Mechanical cascade (grep, find, git diff), semantic only as last resort |
+| **Verification method** | Agent semantic assessment across 7 categories | Mechanical cascade (grep, find, git diff) plus semantic stub detection |
 | **Error model** | Balanced severity reporting | Asymmetric: missed phantoms are catastrophic, false flags are acceptable |
 | **What it catches** | Spec-implementation misalignment | Tasks marked done that were never implemented |
 | **Fresh-session requirement** | No | Yes, by design |
@@ -192,7 +177,7 @@ The two extensions are complementary. Run `verify` to check if the implementatio
 
 ### Code review and testing
 
-The `verify-tasks` command confirms that code *exists and is wired up*, not that it's correct, efficient, secure, or well-tested. A function that exists, is imported, and appears in the diff will pass all five layers even if it has bugs. Always pair verification with code review and a thorough test suite.
+The `verify-tasks` command confirms that code *exists and is wired up*, not that it's correct, efficient, secure, or well-tested. A function that exists, is imported, and appears in the diff will pass mechanical layers even if it has bugs. Layer 5 catches stubs and placeholders, but not logic errors. Always pair verification with code review and a thorough test suite.
 
 ## Requirements
 
@@ -206,13 +191,12 @@ The `verify-tasks` command confirms that code *exists and is wired up*, not that
 
 | Message | Meaning | Action |
 |---------|---------|--------|
-| `ERROR: No tasks.md found in feature directory: {path}` | The prerequisites script could not locate a feature directory, or `tasks.md` is missing from it | Run `/speckit.specify` and `/speckit.tasks` first to create the spec and task list |
+| `ERROR: Missing prerequisite: {file} not found in feature directory: {path}` | One of `spec.md`, `plan.md`, or `tasks.md` is missing from the feature directory | Run `/speckit.specify`, `/speckit.plan`, and `/speckit.tasks` first to create the required artifacts |
 | `No completed tasks found to verify.` | No `[X]` tasks exist in `tasks.md` | Mark at least one task complete before running verification |
 | `WARNING: Malformed task on line {n}: "{line}" -- skipping` | A line has a broken checkbox syntax or no task ID | Fix the malformed line in `tasks.md`; remaining tasks are still verified |
 | `WARNING: Git unavailable -- Layer 2 (Git Diff) skipped for all tasks.` | No `.git` directory found, or `git` is not on PATH | Layers 1, 3, 4, and 5 still run; initialize a git repo for full coverage |
 | `WARNING: Shallow clone detected -- Layer 2 diff coverage may be incomplete.` | The repo was cloned with `--depth` | Run `git fetch --unshallow` for complete history |
-| `WARNING: plan.md not found -- falling back to scope=all` | `--scope plan-anchored` was requested but `plan.md` does not exist | Use a different scope, or ensure `plan.md` is present in the feature directory |
-| `WARNING: No date found in plan.md -- falling back to scope=all` | `plan.md` exists but has no `**Date**: YYYY-MM-DD` field | Add a date field to `plan.md`, or use a different scope |
+| `WARNING: No date found in plan.md -- falling back to scope=all` | `--scope plan-anchored` was requested but `plan.md` has no `**Date**: YYYY-MM-DD` field | Add a date field to `plan.md`, or use a different scope |
 | `WARNING: Task ID not found: {id} -- skipping.` | A task ID passed as an argument does not exist in `tasks.md` | Check the ID spelling; use `/speckit.verify-tasks` without arguments to verify all tasks |
 | `ERROR: Cannot write report to {path}: {reason}` | File system permission or path problem | The report is printed to stdout instead; check directory permissions |
 
