@@ -4,7 +4,7 @@ extension:
   id: "verify-tasks"
   name: "Verify Tasks Extension"
   version: "1.0.0"
-  description: "Detects phantom completions — tasks marked [X] in tasks.md with no real implementation."
+  description: "Detect phantom completions: tasks marked [X] in tasks.md with no real implementation."
   author: "dave.sharpe@datastone.ca"
   repository: "https://github.com/datastone-inc/spec-kit-verify-tasks"
   license: "MIT"
@@ -22,7 +22,7 @@ provides:
   commands:
     - name: "speckit.verify-tasks.run"
       file: "commands/speckit.verify-tasks.md"
-      description: "Detect phantom completions by running a five-layer verification cascade against every completed task"
+      description: "Detect phantom completions: tasks marked [X] in tasks.md with no real implementation."
       aliases: ["speckit.verify-tasks"]
 
 hooks:
@@ -38,4 +38,3 @@ tags:
   - "quality"
   - "phantom-completion"
   - "tasks"
-  - "spec-adherence"
