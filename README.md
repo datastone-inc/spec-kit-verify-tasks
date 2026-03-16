@@ -41,7 +41,7 @@ specify extension add verify-tasks
 Or install directly from a specific release:
 
 ```sh
-specify extension add verify-tasks --from https://github.com/speckit/spec-kit-verify-tasks/archive/refs/tags/v1.0.0.zip
+specify extension add verify-tasks --from https://github.com/datastone-inc/spec-kit-verify-tasks/archive/refs/tags/v1.0.0.zip
 ```
 
 For local development:
