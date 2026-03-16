@@ -4,7 +4,7 @@ extension:
   id: "verify-tasks"
   name: "Verify Tasks Extension"
   version: "1.0.0"
-  description: "Phantom completion detector — verifies tasks.md [X] tasks against the codebase using a five-layer cascade."
+  description: "Detects phantom completions — tasks marked [X] in tasks.md with no real implementation."
   author: "dave.sharpe@datastone.ca"
   repository: "https://github.com/datastone-inc/spec-kit-verify-tasks"
   license: "MIT"
