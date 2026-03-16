@@ -64,7 +64,7 @@ Display the following advisory **immediately** before any other work:
 
 ## Outline
 
-**Asymmetric error model** — applies to all layers below: false flags (flagging genuine work) are cheap — dismissed in seconds. Missed phantoms (passing fake completions) can ship to production and is a catastrophic failure if it happens. When in doubt, flag.
+**Asymmetric error model** — applies to all layers below: a false flag (flagging genuine work) is cheap — the developer dismisses it in seconds during the walkthrough. A missed phantom (returning `VERIFIED` for a task that was never implemented) is a **catastrophic failure of this tool** — it means `/speckit.verify-tasks` did the one thing it exists to prevent. When in doubt, flag.
 
 1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse FEATURE_DIR. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot"). Verify `$FEATURE_DIR/spec.md`, `$FEATURE_DIR/plan.md`, and `$FEATURE_DIR/tasks.md` all exist — if any are missing, `ERROR: Missing prerequisite: {file} not found in feature directory: $FEATURE_DIR` and stop.
 

@@ -12,6 +12,10 @@ A [spec-kit](https://github.com/speckit) extension that detects **phantom comple
 
 A **phantom completion** is a task marked `[X]` as done that was never actually implemented. The checkbox was checked but the code was never written. This happens when an AI agent marks work complete without completing it, when implementation is partial but the task list was not updated, or when a task was copy-marked during a refactor without verifying the underlying work.
 
+Phantom completions arise because autoregressive token prediction has no grounding in execution state. When the model has marked T001 through T024 as `[X]`, the highest-probability continuation after the next task description is another `[X]` — regardless of what happened in the filesystem. Planning an action and reporting it done are not distinct operations in the same forward pass, and RLHF training biases the model toward success reporting. The result is a false positive in the agent's own task-tracking output at a rate too low to catch by hand (~0.36%, or roughly [one per 277 tasks](https://datastone.ca/blog/task-phantom-completions-ai-assisted-development/)).
+
+This matters because a wall of checked boxes creates a false sense of completion. When a developer trusts that list and moves on — to code review, QA, or the next feature — they are operating on a mental model that doesn't match reality. That dissonance between *reported* progress and *actual* progress is costly: bugs surface later, integration work is built on missing foundations, and confidence in AI-assisted workflows erodes. `verify-tasks` eliminates that gap by treating every `[X]` as a claim that must be mechanically proven.
+
 `/speckit.verify-tasks` closes this gap by independently verifying every `[X]` task through a five-layer verification cascade, producing a structured markdown report with per-task verdicts, then walking you through each flagged item interactively.
 
 ## What it does
@@ -55,7 +59,7 @@ specify extension add --dev /path/to/spec-kit-verify-tasks
 /speckit.verify-tasks T003 --scope uncommitted
 ```
 
-> ⚠️ **Run in a fresh agent session.** The agent that ran `/speckit.implement` carries context that biases it toward confirming its own work. Always invoke `/speckit.verify-tasks` in a separate session.
+> 💡 **Recommended: run in a fresh agent session.** The agent that ran `/speckit.implement` carries context that biases it toward confirming its own work. Running `/speckit.verify-tasks` in a separate session produces more reliable results.
 
 ### Automatic hook
 
@@ -151,7 +155,7 @@ See `tests/expected-verdicts.md` for step-by-step instructions on running fixtur
 The extension is governed by eight constitutional principles. The most critical:
 
 - **Asymmetric Error Model**: a missed phantom is catastrophic; a false alarm is acceptable. Ambiguous evidence always yields `PARTIAL`/`WEAK`, never `VERIFIED`.
-- **Agent Independence**: verification must run in a session separate from the implementing agent to avoid confirmation bias.
+- **Agent Independence**: verification produces more reliable results in a session separate from the implementing agent, avoiding confirmation bias.
 - **Pure Prompt Architecture**: 100% prompt-driven. No Python scripts or external binaries; only shell tools (`grep`, `find`, `git`). Works across Claude Code, GitHub Copilot, Gemini CLI, Cursor, Windsurf, and other spec-kit agents.
 - **Verification Cascade**: mechanical layers (1-4) establish baseline evidence. Semantic assessment (layer 5) runs when no mechanical layer returned `negative`, and can downgrade `VERIFIED` to `PARTIAL` when it detects stubs or placeholders.
 
@@ -171,7 +175,7 @@ See [`.specify/memory/constitution.md`](.specify/memory/constitution.md) for the
 | **Verification method** | Agent semantic assessment across 7 categories | Mechanical cascade (grep, find, git diff) plus semantic stub detection |
 | **Error model** | Balanced severity reporting | Asymmetric: missed phantoms are catastrophic, false flags are acceptable |
 | **What it catches** | Spec-implementation misalignment | Tasks marked done that were never implemented |
-| **Fresh-session requirement** | No | Yes, by design |
+| **Fresh-session recommendation** | No | Yes, for best results |
 
 The two extensions are complementary. Run `verify` to check if the implementation is *correct*. Run `verify-tasks` to check if it's *complete*. A phantom completion will likely pass `verify` (the code that exists is fine) but will be caught by `verify-tasks` (the specific task's file was never created or modified).
 
