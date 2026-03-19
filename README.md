@@ -34,15 +34,13 @@ Each task receives one of five verdicts: `✅ VERIFIED`, `🔍 PARTIAL`, `⚠️
 
 ## Installation
 
-```sh
-specify extension add verify-tasks
-```
-
-Or install directly from a specific release:
+`verify-tasks` is listed in the spec-kit [community catalog](https://github.com/github/spec-kit/blob/main/extensions/catalog.community.json). Discover it with `specify extension search verify-tasks`, then install using the download URL:
 
 ```sh
 specify extension add verify-tasks --from https://github.com/datastone-inc/spec-kit-verify-tasks/archive/refs/tags/v1.0.0.zip
 ```
+
+> The community catalog is discovery-only (`install_allowed: false`). The bare command `specify extension add verify-tasks` works only when the extension is in a catalog with `install_allowed: true` — for example, your organization's curated `catalog.json` or a custom catalog added via `specify extension catalog add`.
 
 For local development:
 
