@@ -156,7 +156,7 @@ Display the following advisory **immediately** before any other work:
 
     **For each flagged item, output exactly one item and then STOP.** Do not display the next item until the user has replied. Each message must follow this template:
 
-    ```
+    ```text
     ### Flagged Item {i} of {total}: {TASK_ID} — {VERDICT_EMOJI} {VERDICT}
 
     **Task**: {task description}
@@ -175,9 +175,13 @@ Display the following advisory **immediately** before any other work:
     - **S**: Log as skipped, then display the **next** flagged item using the template above and STOP again.
     - **done** / **stop** / **exit**: End the walkthrough early.
 
+    > Each disposition is collected for the `## Walkthrough Log` appended after the walkthrough. The original report — scorecard, Flagged Items, and Verified Items — is never modified during this process.
+
     After the last flagged item is resolved (or the user ends early): `✅ Walkthrough complete. {n} of {total} flagged items addressed.`
 
-    Append a `## Walkthrough Log` section to the report with the disposition of each flagged item (investigated, fix proposed, skipped). Do not modify the original verdict table — it is the audit record. If fixes were applied, suggest re-running `/speckit.verify-tasks` for a clean re-evaluation.
+    Append a `## Walkthrough Log` section to the report with the disposition of each flagged item (investigated, fix proposed, skipped).
+
+    **CRITICAL — report immutability**: The **only** permitted change to the report file is appending the `## Walkthrough Log` section. Do **NOT** edit, promote, or re-score any row in the original Flagged Items section or Verified Items table — those sections are the immutable audit record. A task that was `🔍 PARTIAL` before the walkthrough must remain `🔍 PARTIAL` in the original table even if a fix was applied during the walkthrough. The Walkthrough Log is the correct place to record the disposition (e.g., `🔍 PARTIAL → ✅ VERIFIED`). If fixes were applied, suggest re-running `/speckit.verify-tasks` for a clean re-evaluation.
 
 7. **Check for extension hooks**: After walkthrough, check if `.specify/extensions.yml` exists in the project root.
     - If it exists, read it and look for entries under the `hooks.after_verify-tasks` key
