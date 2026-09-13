@@ -19,8 +19,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 Display the following advisory **immediately** before any other work:
 
-> ⚠️ **FRESH SESSION ADVISORY**: For maximum reliability, run `/speckit.verify-tasks`
-> in a **separate** agent session from the one that performed `/speckit.implement`.
+> ⚠️ **FRESH SESSION ADVISORY**: For maximum reliability, run `__SPECKIT_COMMAND_VERIFY-TASKS_RUN__`
+> in a **separate** agent session from the one that performed `__SPECKIT_COMMAND_IMPLEMENT__`.
 > The implementing agent's context biases it toward confirming its own work.
 
 ## Pre-Execution Checks
@@ -64,7 +64,7 @@ Display the following advisory **immediately** before any other work:
 
 ## Outline
 
-**Asymmetric error model** — applies to all layers below: a false flag (flagging genuine work) is cheap — the developer dismisses it in seconds during the walkthrough. A missed phantom (returning `VERIFIED` for a task that was never implemented) is a **catastrophic failure of this tool** — it means `/speckit.verify-tasks` did the one thing it exists to prevent. When in doubt, flag.
+**Asymmetric error model** — applies to all layers below: a false flag (flagging genuine work) is cheap — the developer dismisses it in seconds during the walkthrough. A missed phantom (returning `VERIFIED` for a task that was never implemented) is a **catastrophic failure of this tool** — it means `__SPECKIT_COMMAND_VERIFY-TASKS_RUN__` did the one thing it exists to prevent. When in doubt, flag.
 
 1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse FEATURE_DIR. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot"). Verify `$FEATURE_DIR/spec.md`, `$FEATURE_DIR/plan.md`, and `$FEATURE_DIR/tasks.md` all exist — if any are missing, `ERROR: Missing prerequisite: {file} not found in feature directory: $FEATURE_DIR` and stop.
 
@@ -85,7 +85,14 @@ Display the following advisory **immediately** before any other work:
    - `all` (default): diff base ref to HEAD plus uncommitted/untracked changes
    - If shallow clone detected, warn that diff coverage may be incomplete.
 
+   **Test gate (execution evidence)**: Layers 1–4 can only grep. A task whose claim is "the suite is green" or "full `make check` green" has nothing to grep, and marking it `WEAK` or `SKIPPED` tells the developer nothing. So: if the completed task list names a canonical test command (a `make check`, `pytest`, `cargo test`, `npm test`, or a project runner named in the repository's agent guidance), **run it once, in the background, at the start of step 4**, against the current tree, with output to a scratch log — and continue the mechanical layers while it runs. When it finishes, record the exit status and the pass/fail summary lines in the report header under "Execution evidence gathered this run". Rules:
+     - Run it only if the environment can (a reachable database, an installed toolchain); if it cannot, say so in the report header and fall back to the layers as written. Never fabricate a run.
+     - A verify task whose named check passed in this run is `✅ VERIFIED (by execution)`, not `WEAK`; one whose named check failed or was not run stays at whatever the layers give it. A green run is evidence for the task's *claim*; it says nothing about whether the task's *record* (a commit message, a note) exists — that stays a Layer 5 question.
+     - Do not run anything destructive or state-changing beyond what the project's own check target does. If the check requires a private lab, stopped services, or a manual step, do not improvise it — report it as not run.
+
 4. **Verification cascade**: Process each completed task individually through all five layers before moving to the next task.
+
+   **Checkpoint rule**: this step is long and otherwise silent. After every phase of `tasks.md` (or every ~10 tasks when the file has no phase headings), print **one line** to the user before continuing: `checkpoint: T0nn–T0mm done — {n} verified, {n} flagged so far; next: {phase or range}`. Print it even when nothing is flagged. Do not print per-task detail here — that is the report's job — and do not stop for input; the only hard stop is the walkthrough in step 6.
 
    For each completed task:
 
@@ -108,10 +115,10 @@ Display the following advisory **immediately** before any other work:
 
    > **Note**: Content matching is most precise on application source code. For non-code artifacts, matches may produce false positives — acceptable per the asymmetric error model.
 
-   **Layer 4 — Dead-code detection**: Assess whether usage references are expected for the artifact type. Skip this layer (`not_applicable`) for artifacts consumed by runtime/tooling rather than imported by code: SQL migrations, config files, CI/CD, shell scripts, prompts, static assets, test files. Proceed for application code symbols.
+   **Layer 4 — Dead-code detection**: Assess whether usage references are expected for the artifact type. Skip this layer (`not_applicable`) only for artifacts consumed purely *by being present*: config files, CI/CD, prompts, static assets, test files, and SQL **schema objects** (tables, columns, types, views, indexes — a `CREATE TABLE` needs no caller). **Do NOT blanket-skip SQL.** A SQL **function / procedure / trigger** is callable code: it is dead if nothing `PERFORM`/`SELECT`/`CALL`s it or wires it to an event trigger, exactly like an uncalled application function — being in a `.sql` file does not exempt it. Crucially, a backend function whose *intended caller is another component* — e.g. a stored function that a spec or contract says a **separate component** (a code generator, a client, a job runner) calls as `SELECT schema.fn(...)` — is "wired" only if that emitter actually exists; treat the contract claim "component Y calls X" as a **checkable assertion**, not evidence. (This is the exact gap that lets a fully-implemented-but-never-invoked backend function pass: body present, signature found, but zero callers across the seam.) Proceed for application code symbols and for SQL callable objects.
 
    For each symbol found in Layer 3:
-   - **Determine search scope**: Walk up from the definition file's directory to find the nearest project root (directory containing `__init__.py`, `setup.py`, `pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`, `Makefile`, or the parent of a `src/` directory). Fall back to repository root if none found.
+   - **Determine search scope**: Walk up from the definition file's directory to find the nearest project root (directory containing `__init__.py`, `setup.py`, `pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`, `Makefile`, or the parent of a `src/` directory). Fall back to repository root if none found. **Exception — cross-component callables**: when the symbol's legitimate caller may live in a *sibling* component or a different language (e.g. a SQL function whose only legitimate caller is a C++ or Python component that builds the call string, or any symbol whose spec/contract names a caller in another component), search the **whole repository** instead — a per-project-root scope would never see the cross-component emitter and would falsely report the symbol dead, or (if the definition's own root contains the only grant/comment) falsely pass it. Include the caller's language extensions in the grep — the `schema.fn(...)` string may be assembled in `.cpp`, `.py`, `.rs` or `.java` source.
    - **Search for references** in source code files under that scope, excluding the definition site (the line or block where the symbol is declared). Search **only source code files** (by extension: `.py`, `.js`, `.ts`, `.java`, `.go`, `.rs`, `.rb`, `.c`, `.cpp`, `.h`, `.cs`, `.php`, `.sh`, etc.) to automatically exclude task files, markdown specs, reports, and docs that mention symbols by name. Same-file references outside the definition site count as wired.
    - Discard matches inside comments or string literals (unless the string is a dynamic import or reflective call).
    - If references remain → symbol is wired (`positive`). If none remain → dead code (`negative`); record `"{symbol}" declared in {file} but never imported/called/referenced`.
@@ -137,12 +144,13 @@ Display the following advisory **immediately** before any other work:
    | `⏭️ SKIPPED` | ALL layers `not_applicable` — no verifiable indicators |
 
    Key rules:
+   - A task whose only claim is a test run that the step 3 test gate executed green this session is `✅ VERIFIED (by execution)`; the report says so in the row so the reader knows the credit came from a run, not a grep
    - A semantic `negative` with cited evidence downgrades `VERIFIED` → `PARTIAL`
    - `not_applicable` and `skipped` layers do not count against `VERIFIED` — only `negative` layers prevent it
    - `SKIPPED` tasks are not failures — they are behavioral-only tasks
 
 5. **Report generation**: Write `$FEATURE_DIR/verify-tasks-report.md` (overwrite if exists). Include:
-    - Header with date, scope, task count, and the fresh session advisory
+    - Header with date, scope, task count, the fresh session advisory, and the step 3 test-gate execution evidence (command, exit status, summary lines) or the reason it was not run
     - Summary scorecard (verdict counts)
     - Flagged items section (NOT_FOUND → PARTIAL → WEAK), each with a per-layer detail table
     - Verified items table
@@ -156,7 +164,7 @@ Display the following advisory **immediately** before any other work:
 
     **For each flagged item, output exactly one item and then STOP.** Do not display the next item until the user has replied. Each message must follow this template:
 
-    ```
+    ```text
     ### Flagged Item {i} of {total}: {TASK_ID} — {VERDICT_EMOJI} {VERDICT}
 
     **Task**: {task description}
@@ -175,9 +183,13 @@ Display the following advisory **immediately** before any other work:
     - **S**: Log as skipped, then display the **next** flagged item using the template above and STOP again.
     - **done** / **stop** / **exit**: End the walkthrough early.
 
+    > Each disposition is collected for the `## Walkthrough Log` appended after the walkthrough. The original report — scorecard, Flagged Items, and Verified Items — is never modified during this process.
+
     After the last flagged item is resolved (or the user ends early): `✅ Walkthrough complete. {n} of {total} flagged items addressed.`
 
-    Append a `## Walkthrough Log` section to the report with the disposition of each flagged item (investigated, fix proposed, skipped). Do not modify the original verdict table — it is the audit record. If fixes were applied, suggest re-running `/speckit.verify-tasks` for a clean re-evaluation.
+    Append a `## Walkthrough Log` section to the report with the disposition of each flagged item (investigated, fix proposed, skipped).
+
+    **CRITICAL — report immutability**: The **only** permitted change to the report file is appending the `## Walkthrough Log` section. Do **NOT** edit, promote, or re-score any row in the original Flagged Items section or Verified Items table — those sections are the immutable audit record. A task that was `🔍 PARTIAL` before the walkthrough must remain `🔍 PARTIAL` in the original table even if a fix was applied during the walkthrough. The Walkthrough Log is the correct place to record the disposition (e.g., `🔍 PARTIAL → ✅ VERIFIED`). If fixes were applied, suggest re-running `__SPECKIT_COMMAND_VERIFY-TASKS_RUN__` for a clean re-evaluation.
 
 7. **Check for extension hooks**: After walkthrough, check if `.specify/extensions.yml` exists in the project root.
     - If it exists, read it and look for entries under the `hooks.after_verify-tasks` key
