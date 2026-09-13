@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: "verify-tasks"
   name: "Verify Tasks Extension"
-  version: "1.0.0"
+  version: "1.1.0"
   description: "Detect phantom completions: tasks marked [X] in tasks.md with no real implementation."
   author: "dave.sharpe@datastone.ca"
   repository: "https://github.com/datastone-inc/spec-kit-verify-tasks"
@@ -11,7 +11,7 @@ extension:
   homepage: "https://github.com/datastone-inc/spec-kit-verify-tasks"
 
 requires:
-  speckit_version: ">=0.1.0"
+  speckit_version: ">=0.12.17"
   commands:
     - "speckit.specify"
     - "speckit.plan"

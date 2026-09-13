@@ -5,10 +5,10 @@
 # spec-kit-verify-tasks
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![spec-kit](https://img.shields.io/badge/spec--kit-extension-blueviolet.svg)](https://github.com/speckit)
+[![spec-kit](https://img.shields.io/badge/spec--kit-extension-blueviolet.svg)](https://github.com/github/spec-kit)
 [![Changelog](https://img.shields.io/badge/changelog-CHANGELOG.md-blue.svg)](CHANGELOG.md)
 
-A [spec-kit](https://github.com/speckit) extension that detects **phantom completions** in `tasks.md`.
+A [spec-kit](https://github.com/github/spec-kit) extension that detects **phantom completions** in `tasks.md`.
 
 A **phantom completion** is a task marked `[X]` as done that was never actually implemented. The checkbox was checked but the code was never written. This happens when an AI agent marks work complete without completing it, when implementation is partial but the task list was not updated, or when a task was copy-marked during a refactor without verifying the underlying work.
 
@@ -32,12 +32,14 @@ When a feature is marked "done" in `tasks.md`, there is no automatic check that 
 
 Each task receives one of five verdicts: `✅ VERIFIED`, `🔍 PARTIAL`, `⚠️ WEAK`, `❌ NOT_FOUND`, or `⏭️ SKIPPED`.
 
+The four mechanical layers can only grep. A task whose claim is "the suite is green" has nothing to grep, so a **test gate** runs alongside them: when the completed task list names a canonical test command (`make check`, `pytest`, `cargo test`, `npm test`, or a runner named in the repository's agent guidance) and the environment can run it, the command runs it once in the background and records the exit status and summary lines in the report header. A task whose only claim is that run is then `✅ VERIFIED (by execution)` rather than `⚠️ WEAK`. The gate never fabricates a run and never improvises a missing lab; when the check cannot run, the report says so and the layers stand as written.
+
 ## Installation
 
 `verify-tasks` is listed in the spec-kit [community catalog](https://github.com/github/spec-kit/blob/main/extensions/catalog.community.json). Discover it with `specify extension search verify-tasks`, then install using the download URL:
 
 ```sh
-specify extension add verify-tasks --from https://github.com/datastone-inc/spec-kit-verify-tasks/archive/refs/tags/v1.0.0.zip
+specify extension add verify-tasks --from https://github.com/datastone-inc/spec-kit-verify-tasks/archive/refs/tags/v1.1.0.zip
 ```
 
 > The community catalog is discovery-only (`install_allowed: false`). The bare command `specify extension add verify-tasks` works only when the extension is in a catalog with `install_allowed: true` — for example, your organization's curated `catalog.json` or a custom catalog added via `specify extension catalog add`.
@@ -56,6 +58,8 @@ specify extension add --dev /path/to/spec-kit-verify-tasks
 /speckit.verify-tasks --scope branch
 /speckit.verify-tasks T003 --scope uncommitted
 ```
+
+`/speckit.verify-tasks` is an alias. The canonical three-part name is `speckit.verify-tasks.run`, and both are installed, so `/speckit.verify-tasks.run` works too. Agents that use a hyphen separator see `/speckit-verify-tasks` and `/speckit-verify-tasks-run`. spec-kit 0.4.3 briefly rejected two-part aliases at install time; 0.5.1 (2026-04-08) restored them, and the extension requires a later version than that.
 
 > 💡 **Recommended: run in a fresh agent session.** The agent that ran `/speckit.implement` carries context that biases it toward confirming its own work. Running `/speckit.verify-tasks` in a separate session produces more reliable results.
 
@@ -111,7 +115,7 @@ After the report is written, the command enters a sequential walkthrough for eac
 
 Reply `done` at any point to end the walkthrough early. The agent presents exactly one item per turn and never reveals future items in advance.
 
-After the walkthrough completes, a `## Walkthrough Log` section is appended to the report with the disposition of each flagged item (investigated, fix proposed, skipped). The original verdict table is not modified — it serves as the audit record. If fixes were applied, re-run `/speckit.verify-tasks` for a clean re-evaluation.
+After the walkthrough completes, a `## Walkthrough Log` section is appended to the report with the disposition of each flagged item (investigated, fix proposed, skipped). The original scorecard, Flagged Items and Verified Items sections are never modified — they are the audit record, and a row that was `PARTIAL` before the walkthrough stays `PARTIAL` there even if a fix was applied; the disposition goes in the log. If fixes were applied, re-run `/speckit.verify-tasks` for a clean re-evaluation.
 
 ## Repository structure
 
@@ -184,6 +188,7 @@ The `verify-tasks` command confirms that code *exists and is wired up*, not that
 ## Requirements
 
 - A spec-kit project with a `tasks.md` inside a feature directory
+- spec-kit at or above the version named in `extension.yml` (`requires.speckit_version`)
 - An AI agent that supports spec-kit slash commands (Claude Code, GitHub Copilot, Gemini CLI, Cursor, Windsurf, etc.)
 - `git` (optional; layers 2 and 4 are skipped gracefully if unavailable)
 - The spec-kit prerequisites script at `.specify/scripts/bash/check-prerequisites.sh`
@@ -211,7 +216,8 @@ For other artifact types, the cascade adapts its search strategies but with decr
 | Artifact type | Layers 1–2 (file + diff) | Layer 3 (content match) | Layer 4 (dead-code) | Overall confidence |
 |---------------|--------------------------|------------------------|---------------------|-------------------|
 | Application code | Strong | Strong | Strong | High |
-| SQL migrations, schemas | Strong | Moderate — searches for `CREATE`, `ALTER`, table names | Skipped (consumed by migration runner) | Moderate |
+| SQL schema objects (tables, views, types, indexes) | Strong | Moderate — searches for `CREATE`, `ALTER`, object names | Skipped (a `CREATE TABLE` needs no caller) | Moderate |
+| SQL functions, procedures, triggers | Strong | Moderate — searches for `CREATE FUNCTION` etc. + name | Strong — checked for callers like application code, including callers in other components | High |
 | Config files (YAML, TOML, JSON, .env) | Strong | Moderate — plain text key matching | Skipped (consumed by runtime) | Moderate |
 | Shell scripts | Strong | Moderate — searches for function defs, variable assignments | Skipped (consumed by shell) | Moderate |
 | Markdown, prompt files | Strong | Weak — searches for section headings, key phrases | Skipped (consumed by agent) | Low–Moderate |
