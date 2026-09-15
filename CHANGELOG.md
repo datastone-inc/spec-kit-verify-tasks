@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-15
+
+spec-kit 0.11.2 added `/speckit.converge`, which assesses the tree against the spec, plan, and constitution and appends unbuilt work as new tasks. Converge finds what is *not built*; verify-tasks finds what is *falsely marked built*. This release wires the two together.
+
+### Added
+
+- **`after_converge` hook.** Tasks that converge appends get implemented and marked `[X]` too, and those marks need verifying. The extension now registers an optional hook after converge alongside the existing one after implement, so verify-tasks is the final gate once converge reports Converged.
+- **`PARTIAL (code)` / `PARTIAL (record)` qualifier.** Every `🔍 PARTIAL` row now says which loop to enter. A code gap (symbol defined nowhere, dead, stubbed, behavior absent, file missing with no rename) means the task is not done. A record gap (file renamed, symbol defined and wired elsewhere, only Layer 2 negative, or a false or stale claim in the task text) means the code is done and the task's own line is wrong. Unclear cases are tagged `code`. The scorecard shows the two counts separately and the verdict line carries the tag.
+- **Walkthrough action D (demote).** For a `NOT_FOUND` or `PARTIAL (code)` item, flip the task's checkbox from `[X]` to `[ ]` after explicit confirmation, so `/speckit.converge` and `/speckit.implement` pick it up. One character changes: no renumbering, reordering, deleting, task-text edits, or Convergence header changes. The report immutability rule is unchanged.
+- **Source-ref rule in Layer 5.** Convergence tasks carry `per <source-ref> (<gap-type>)`. Task parsing now captures it, and Layer 5 reads that exact FR, SC, acceptance scenario, plan decision, or constitution principle instead of searching `spec.md` for the concept.
+- **Scope statement and converge handoff.** The advisory now says what verify-tasks does not do (`[ ]` tasks, spec coverage, unrequested code, constitution compliance) and points at converge; the command frontmatter offers a converge handoff next to the implement one.
+- **Convergence-phase fixture tasks.** `tests/fixtures/phantom-tasks/` gains a `## Phase 2: Convergence` section with one planted code gap (T012) and one planted record gap (T011); `tests/expected-verdicts.md` covers both.
+
+### Changed
+
+- **Hook blocks adopt the spec-kit 1.0.6 boilerplate.** An unparseable `.specify/extensions.yml` is reported rather than skipped silently; a hook without an `enabled` field is enabled; dots in hook command names become hyphens in the invocation; a mandatory hook must actually be invoked, not just printed.
+- **Constitution 1.1.0.** Article VII now permits a user-confirmed walkthrough disposition to edit the flagged task's own line in `tasks.md` (fix a record gap, or demote) and nothing else. Rationale is recorded in the constitution's amendment history.
+- README: converge pairing section with a comparison table, both hooks documented with the real `extensions.yml` shape, fresh-session advice extended to converge, walkthrough table gains **D**.
+
 ## [1.1.0] - 2026-09-13
 
 ### Fixed
@@ -55,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/expected-verdicts.md` — expected evidence level with rationale for every task in every fixture
 - `.markdownlint.json` configuration
 
-[Unreleased]: https://github.com/datastone-inc/spec-kit-verify-tasks/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/datastone-inc/spec-kit-verify-tasks/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/datastone-inc/spec-kit-verify-tasks/releases/tag/v1.2.0
 [1.1.0]: https://github.com/datastone-inc/spec-kit-verify-tasks/releases/tag/v1.1.0
 [1.0.0]: https://github.com/datastone-inc/spec-kit-verify-tasks/releases/tag/v1.0.0

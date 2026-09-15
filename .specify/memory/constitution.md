@@ -139,12 +139,19 @@ easy to audit, install, and maintain.
 ### VII. No Codebase Modification
 
 The extension MUST NEVER modify source code, task files, or any
-spec-kit artifacts. It is strictly a read-only verification and
-reporting tool.
+spec-kit artifacts during verification. It is strictly a read-only
+verification and reporting tool.
 
 - The agent may offer to fix gaps interactively after presenting
   findings, but this is a separate user-approved action, not part of
   the verification command itself.
+- A user-confirmed walkthrough disposition MAY edit `tasks.md` in
+  exactly two ways: correct the text of the flagged task's own line or
+  the note it names (a record gap), or flip that task's single checkbox
+  from `[X]` to `[ ]` (demote, a code gap). It MUST NOT renumber,
+  reorder, or delete tasks, and MUST NOT touch a
+  `## Phase N: Convergence` header, so that `/speckit.converge` and
+  `/speckit.implement` can pick the task up unchanged.
 - The verification report is the only file the command creates.
 
 **Rationale**: A verification tool that mutates the codebase cannot be
@@ -224,5 +231,12 @@ authoring MUST comply with the principles defined herein.
     refinements.
 - **Compliance review**: Every PR MUST be checked against this
   constitution. Violations MUST be resolved before merge.
+- **Amendment history**:
+  - 1.1.0 (2026-09-15), Article VII: a user-confirmed walkthrough
+    disposition may edit the flagged task's own line in `tasks.md`.
+    Rationale: the walkthrough's fix and demote actions need a defined
+    write, and the `/speckit.converge` → `/speckit.implement` loop is
+    the remediation path for code gaps; demoting a falsely-marked task
+    hands it back to that loop without renumbering.
 
-**Version**: 1.0.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-03-12
+**Version**: 1.1.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-09-15

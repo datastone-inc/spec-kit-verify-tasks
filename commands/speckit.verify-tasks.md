@@ -5,6 +5,10 @@ handoffs:
     agent: speckit.implement
     prompt: Re-implement the flagged tasks from the verify-tasks-report
     send: true
+  - label: Find Unbuilt Work
+    agent: speckit.converge
+    prompt: Assess the codebase against spec, plan, and tasks and append any remaining unbuilt work as new tasks
+    send: true
 ---
 
 ## User Input
@@ -23,17 +27,20 @@ Display the following advisory **immediately** before any other work:
 > in a **separate** agent session from the one that performed `__SPECKIT_COMMAND_IMPLEMENT__`.
 > The implementing agent's context biases it toward confirming its own work.
 
+**Scope**: this command grades the **record**. Every `[X]` is a claim that the work exists in the tree, and each claim is checked against the tree. It does not assess `[ ]` tasks, spec coverage, unrequested code, or constitution compliance — that is `__SPECKIT_COMMAND_CONVERGE__`, which finds what is *not built*; this command finds what is *falsely marked built*. The two pair: run `__SPECKIT_COMMAND_CONVERGE__` until it reports Converged, then run this command in a fresh session as the final gate.
+
 ## Pre-Execution Checks
 
 **Check for extension hooks (before verification)**:
 
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_verify-tasks` key
-- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
-- Filter to only hooks where `enabled: true`
+- If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
+- Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
 - For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
   - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
   - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
+- When constructing command invocations from hook command names, replace dots (`.`) with hyphens (`-`). For example, `speckit.git.commit` → `/speckit-git-commit`.
 - For each executable hook, output the following based on its `optional` flag:
   - **Optional hook** (`optional: true`):
 
@@ -60,6 +67,8 @@ Display the following advisory **immediately** before any other work:
     Wait for the result of the hook command before proceeding to the Outline.
     ```
 
+    After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
+
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
 ## Outline
@@ -74,6 +83,7 @@ Display the following advisory **immediately** before any other work:
    - Extract file paths: exact paths, backtick-wrapped paths, glob patterns, directory references.
    - Extract code references: backtick-wrapped symbol names (function/class/type names).
    - Extract acceptance criteria: indented lines beginning with `Given`, `When`, `Then`, or `-`.
+   - Extract the convergence source-ref when present: a trailing `per <source-ref> (<gap-type>)` as written by `__SPECKIT_COMMAND_CONVERGE__` — e.g. `per FR-003 (missing)`, `per US1/AC2 (partial)`, `per plan: storage decision (partial)`, `per Constitution II (contradicts)`. Record `source_ref` and `gap_type` on the task; Layer 5 uses them. Tasks under a `## Phase N: Convergence` heading are ordinary tasks in every other respect.
    - Record line number and nesting depth.
    - If `$ARGUMENTS` contains task IDs, restrict to those IDs only. Emit `WARNING: Task ID not found: {id} — skipping` for any filter ID not in `tasks.md`.
    - If no `[X]` tasks found: output `No completed tasks found to verify.` and stop cleanly.
@@ -129,6 +139,8 @@ Display the following advisory **immediately** before any other work:
 
    **Layer 5 — Semantic assessment**: Run when no mechanical layer (1–4) returned `negative` — i.e., the task would otherwise be VERIFIED or SKIPPED. Read the referenced files and `$FEATURE_DIR/spec.md`. Evaluate whether the described behavior appears genuinely implemented — not just structurally present (stub functions, empty bodies, placeholder returns, TODO comments). Always label as interpretive: `⚠️ Interpretive: {explanation}`.
 
+   **Source-ref rule**: when the task carries a convergence `source_ref` (step 2), do not search `spec.md` for the concept. Read that exact item — the FR or SC by number, the user story's acceptance scenario, the named plan decision, or the constitution principle — and assess the code against its text. The original converge finding named what was lacking; for a `partial` or `contradicts` gap type the question is whether *that specific lack* is now closed, not whether the area looks implemented in general. If the source-ref cannot be found in the artifact, say so in the row and fall back to the concept search.
+
    Result: `positive` (behavior visibly implemented and connected), `negative` (stub, placeholder, or no relevant logic found), or `not_applicable` (no files readable or no behavior to evaluate).
 
    > **Downgrade rule**: A high-confidence semantic `negative` can downgrade a mechanically-verified task to `PARTIAL`. This catches the critical case where a stub function passes all mechanical layers (file exists, file changed, symbol defined, symbol imported) but implements nothing. The downgrade must cite specific evidence (e.g., empty function body, `pass`/`TODO`/`NotImplementedError`, hardcoded return values).
@@ -149,18 +161,27 @@ Display the following advisory **immediately** before any other work:
    - `not_applicable` and `skipped` layers do not count against `VERIFIED` — only `negative` layers prevent it
    - `SKIPPED` tasks are not failures — they are behavioral-only tasks
 
+   **PARTIAL qualifier**: every `🔍 PARTIAL` row carries one of two tags, so the reader knows which loop to enter:
+
+   | Tag | Meaning | Disposition |
+   |-----|---------|-------------|
+   | `🔍 PARTIAL (code)` | The work is missing, incomplete, or unwired: a symbol defined nowhere, dead code, a stub or placeholder body, a described behavior absent, a named file missing with no rename found | The task is not done. Demote it (walkthrough action **D**) so `__SPECKIT_COMMAND_CONVERGE__` and `__SPECKIT_COMMAND_IMPLEMENT__` pick it up |
+   | `🔍 PARTIAL (record)` | The work exists and satisfies the task's intent, but the task's own text or note misdescribes it: the file was renamed or moved (Layer 1 rename check), the symbol is defined *and wired* in a different file than the task names, the only `negative` is Layer 2 (present and wired but untouched in this scope), or Layer 5 finds the behavior implemented while a claim in the task text or its note is false or stale | The code is done. Fix the record (walkthrough action **F**); no code change |
+
+   To tell them apart when Layer 1 or Layer 3 is `negative` and the task names symbols, search the repository for the symbol's *definition* (same file-type rules as Layer 4). Defined elsewhere, wired, and a targeted read of that definition (interpretive, labelled as in Layer 5) shows it implements the described behavior → `record`. Otherwise → `code`. This search is part of verdict assignment, not Layer 5, which does not run once a mechanical layer is `negative`. When the classification is unclear, tag `code`: a record gap misfiled as code costs one dismissal in the walkthrough; a code gap misfiled as record hides missing work (asymmetric error model).
+
 5. **Report generation**: Write `$FEATURE_DIR/verify-tasks-report.md` (overwrite if exists). Include:
     - Header with date, scope, task count, the fresh session advisory, and the step 3 test-gate execution evidence (command, exit status, summary lines) or the reason it was not run
-    - Summary scorecard (verdict counts)
-    - Flagged items section (NOT_FOUND → PARTIAL → WEAK), each with a per-layer detail table
+    - Summary scorecard (verdict counts; `PARTIAL` shown as separate `code` and `record` rows)
+    - Flagged items section (NOT_FOUND → PARTIAL (code) → PARTIAL (record) → WEAK), each with a per-layer detail table
     - Verified items table
     - Unassessable items table (SKIPPED)
-    - Machine-parseable verdict line per task: `| {TASK_ID} | {EMOJI} {VERDICT} | {summary} |`
+    - Machine-parseable verdict line per task: `| {TASK_ID} | {EMOJI} {VERDICT} | {summary} |`, where `{VERDICT}` carries its qualifier when it has one: `PARTIAL (code)`, `PARTIAL (record)`, `VERIFIED (by execution)`
 
     Output: `✅ Report written to: {FEATURE_DIR}/verify-tasks-report.md`
     If report cannot be written, output to stdout instead.
 
-6. **Interactive walkthrough** *(multi-turn — one item per message)*: Present flagged items one at a time in severity order (NOT_FOUND first, then PARTIAL, then WEAK). If no flagged items, output `✅ No flagged items — verification complete.` and skip to step 7.
+6. **Interactive walkthrough** *(multi-turn — one item per message)*: Present flagged items one at a time in severity order (NOT_FOUND first, then PARTIAL (code), then PARTIAL (record), then WEAK). If no flagged items, output `✅ No flagged items — verification complete.` and skip to step 7.
 
     **For each flagged item, output exactly one item and then STOP.** Do not display the next item until the user has replied. Each message must follow this template:
 
@@ -170,7 +191,7 @@ Display the following advisory **immediately** before any other work:
     **Task**: {task description}
     **Evidence gap**: {what was missing or failed}
 
-    **Actions**: **I** — investigate further | **F** — propose fix | **S** — skip | **done** — end walkthrough
+    **Actions**: **I** — investigate further | **F** — propose fix | **D** — demote to `[ ]` | **S** — skip | **done** — end walkthrough
 
     Awaiting your choice:
     ```
@@ -179,7 +200,8 @@ Display the following advisory **immediately** before any other work:
 
     When the user replies:
     - **I**: Investigate the evidence gap in detail (read files, check imports, etc.), then re-display the same action prompt for this item and STOP again.
-    - **F**: Propose a fix (do not apply without explicit confirmation), then re-display the action prompt and STOP again.
+    - **F**: Propose a fix (do not apply without explicit confirmation), then re-display the action prompt and STOP again. For a `PARTIAL (record)` item the fix is to the record — the flagged task's own line in `tasks.md` or the note it names — not to code.
+    - **D**: Propose demoting the task: show the exact `tasks.md` line and the one-character change from `[X]` to `[ ]`. Apply only after explicit confirmation (`y`). The edit flips that single checkbox and nothing else — no renumbering, reordering, or deleting, no change to the task text, and never a `## Phase N: Convergence` header — so `__SPECKIT_COMMAND_CONVERGE__` and `__SPECKIT_COMMAND_IMPLEMENT__` pick the task up unchanged. Log as demoted, then display the **next** flagged item and STOP again. This is the right disposition for `NOT_FOUND` and `PARTIAL (code)`.
     - **S**: Log as skipped, then display the **next** flagged item using the template above and STOP again.
     - **done** / **stop** / **exit**: End the walkthrough early.
 
@@ -187,17 +209,19 @@ Display the following advisory **immediately** before any other work:
 
     After the last flagged item is resolved (or the user ends early): `✅ Walkthrough complete. {n} of {total} flagged items addressed.`
 
-    Append a `## Walkthrough Log` section to the report with the disposition of each flagged item (investigated, fix proposed, skipped).
+    Append a `## Walkthrough Log` section to the report with the disposition of each flagged item (investigated, fix proposed, demoted, skipped).
 
-    **CRITICAL — report immutability**: The **only** permitted change to the report file is appending the `## Walkthrough Log` section. Do **NOT** edit, promote, or re-score any row in the original Flagged Items section or Verified Items table — those sections are the immutable audit record. A task that was `🔍 PARTIAL` before the walkthrough must remain `🔍 PARTIAL` in the original table even if a fix was applied during the walkthrough. The Walkthrough Log is the correct place to record the disposition (e.g., `🔍 PARTIAL → ✅ VERIFIED`). If fixes were applied, suggest re-running `__SPECKIT_COMMAND_VERIFY-TASKS_RUN__` for a clean re-evaluation.
+    **CRITICAL — report immutability**: The **only** permitted change to the report file is appending the `## Walkthrough Log` section. Do **NOT** edit, promote, or re-score any row in the original Flagged Items section or Verified Items table — those sections are the immutable audit record. A task that was `🔍 PARTIAL` before the walkthrough must remain `🔍 PARTIAL` in the original table even if a fix was applied during the walkthrough. The Walkthrough Log is the correct place to record the disposition (e.g., `🔍 PARTIAL → ✅ VERIFIED`). If fixes were applied, suggest re-running `__SPECKIT_COMMAND_VERIFY-TASKS_RUN__` for a clean re-evaluation. If tasks were demoted, suggest the `__SPECKIT_COMMAND_CONVERGE__` / `__SPECKIT_COMMAND_IMPLEMENT__` loop, then this command again in a fresh session.
 
 7. **Check for extension hooks**: After walkthrough, check if `.specify/extensions.yml` exists in the project root.
     - If it exists, read it and look for entries under the `hooks.after_verify-tasks` key
-    - If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
-    - Filter to only hooks where `enabled: true`
+    - If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
+    - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
     - For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
       - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
       - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
+    - Report the verification outcome (scorecard and walkthrough summary) in-session before listing any hooks, so users can decide whether to run optional follow-up commands.
+    - When constructing command invocations from hook command names, replace dots (`.`) with hyphens (`-`). For example, `speckit.git.commit` → `/speckit-git-commit`.
     - For each executable hook, output the following based on its `optional` flag:
       - **Optional hook** (`optional: true`):
 
@@ -221,6 +245,8 @@ Display the following advisory **immediately** before any other work:
         Executing: `/{command}`
         EXECUTE_COMMAND: {command}
         ```
+
+        After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
 
     - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
