@@ -14,7 +14,7 @@
 
 ## Fixture 1: Phantom Tasks (`tests/fixtures/phantom-tasks/`)
 
-This fixture contains 10 `[X]` tasks. 5 are genuinely implemented; 5 are planted phantoms.
+This fixture contains 12 `[X]` tasks. 4 are genuinely implemented; 6 are planted phantoms; 2 sit under a `## Phase 2: Convergence` heading in the shape `/speckit.converge` writes (`per <source-ref> (<gap-type>)`), one a planted record gap and one a planted code gap.
 
 ### Phantom Type Key
 
@@ -23,6 +23,8 @@ This fixture contains 10 `[X]` tasks. 5 are genuinely implemented; 5 are planted
 - **PH-DEAD**: Symbol declared but never referenced by any other file
 - **PH-WRONGFN**: File exists but the required function is absent (different functions present)
 - **PH-BEHAVIORAL**: Class exists but a required method is absent
+- **CV-RECORD**: Convergence task whose work exists and is wired, but under a different file than the task names — `🔍 PARTIAL (record)`
+- **CV-CODE**: Convergence task whose work is still absent or unwired — `🔍 PARTIAL (code)`
 
 ### Phantom Expected Verdicts
 
@@ -33,18 +35,23 @@ This fixture contains 10 `[X]` tasks. 5 are genuinely implemented; 5 are planted
 | T003 | ✅ VERIFIED | — | `tests/fixtures/phantom-tasks/src/db.py` exists; `DatabaseConnection` class with `connect()` and `disconnect()` present; imported and used by `tests/fixtures/phantom-tasks/src/main.py` (Layer 4 ✅ wired) |
 | T004 | ✅ VERIFIED | — | `tests/fixtures/phantom-tasks/src/config.py` exists; `AppConfig` dataclass with `host`, `port`, `debug` fields present; imported and used by `tests/fixtures/phantom-tasks/src/main.py` (Layer 4 ✅ wired) |
 | T005 | ❌ NOT_FOUND | **PH-MISSING** | `tests/fixtures/phantom-tasks/src/notifier.py` does not exist — Layer 1 (file existence) fails; no evidence in any layer |
-| T006 | 🔍 PARTIAL | **PH-EMPTY** | `tests/fixtures/phantom-tasks/src/cache.py` exists (Layer 1 ✅); `CacheManager` is declared (Layer 3 ✅); but `get()` and `set()` methods are absent (Layer 3 ❌ for method patterns); `CacheManager` never imported or referenced by other source files (Layer 4 ❌ dead code); class body is `pass` — stub with zero methods (Layer 5 ❌ semantic) |
-| T007 | 🔍 PARTIAL | **PH-DEAD** | `tests/fixtures/phantom-tasks/src/routes.py` exists (Layer 1 ✅); `register_routes` function declared (Layer 3 ✅); but no other file imports or calls it (Layer 4 ❌ dead code); function body is `pass` — no endpoints wired (Layer 5 ❌ semantic) |
-| T008 | 🔍 PARTIAL | **PH-WRONGFN** | `tests/fixtures/phantom-tasks/src/utils.py` exists (Layer 1 ✅); but `parse_request_body` is not present — only unrelated functions `format_date` and `slugify` exist (Layer 3 ❌); at least one layer positive + at least one negative → PARTIAL |
-| T009 | 🔍 PARTIAL | **PH-BEHAVIORAL** | `tests/fixtures/phantom-tasks/src/middleware.py` exists (Layer 1 ✅); `LoggingMiddleware` class declared (Layer 3 ✅); but `__call__` method is absent (Layer 3 ❌ for `__call__` pattern); `LoggingMiddleware` never imported or referenced by other source files (Layer 4 ❌ dead code); only `__init__` present — cannot function as middleware (Layer 5 ❌ semantic) |
+| T006 | 🔍 PARTIAL (code) | **PH-EMPTY** | `tests/fixtures/phantom-tasks/src/cache.py` exists (Layer 1 ✅); `CacheManager` is declared (Layer 3 ✅); but `get()` and `set()` methods are absent (Layer 3 ❌ for method patterns); `CacheManager` never imported or referenced by other source files (Layer 4 ❌ dead code); class body is `pass` — stub with zero methods (Layer 5 ❌ semantic) |
+| T007 | 🔍 PARTIAL (code) | **PH-DEAD** | `tests/fixtures/phantom-tasks/src/routes.py` exists (Layer 1 ✅); `register_routes` function declared (Layer 3 ✅); but no other file imports or calls it (Layer 4 ❌ dead code); function body is `pass` — no endpoints wired (Layer 5 ❌ semantic) |
+| T008 | 🔍 PARTIAL (code) | **PH-WRONGFN** | `tests/fixtures/phantom-tasks/src/utils.py` exists (Layer 1 ✅); but `parse_request_body` is not present — only unrelated functions `format_date` and `slugify` exist (Layer 3 ❌); at least one layer positive + at least one negative → PARTIAL |
+| T009 | 🔍 PARTIAL (code) | **PH-BEHAVIORAL** | `tests/fixtures/phantom-tasks/src/middleware.py` exists (Layer 1 ✅); `LoggingMiddleware` class declared (Layer 3 ✅); but `__call__` method is absent (Layer 3 ❌ for `__call__` pattern); `LoggingMiddleware` never imported or referenced by other source files (Layer 4 ❌ dead code); only `__init__` present — cannot function as middleware (Layer 5 ❌ semantic) |
 | T010 | ❌ NOT_FOUND | **PH-MISSING** | `tests/fixtures/phantom-tasks/src/events.py` does not exist — Layer 1 fails; no evidence in any layer |
+| T011 | 🔍 PARTIAL (record) | **CV-RECORD** | `tests/fixtures/phantom-tasks/src/tokens.py` does not exist and no rename is found (Layer 1 ❌); the qualifier rule's repository-wide definition search finds `issue_token` defined in `tests/fixtures/phantom-tasks/src/auth.py` and called by `tests/fixtures/phantom-tasks/src/main.py` (wired); Layer 5 confirms it mints a token. The work is done; the task names the wrong file → `record`. Source-ref `FR-002` is parsed but the test `spec.md` is empty, so the row must say the ref was not found and fall back |
+| T012 | 🔍 PARTIAL (code) | **CV-CODE** | `tests/fixtures/phantom-tasks/src/main.py` exists (Layer 1 ✅); `register_routes` is absent from `main.py` (Layer 3 ❌); the definition search finds it only in `tests/fixtures/phantom-tasks/src/routes.py`, where it is a `pass` stub with no callers (dead, Layer 4 ❌). The work is not done → `code`. Source-ref `US1/AC2` is parsed but not found in the empty test `spec.md`; the row says so |
+
+The scorecard also proves the source-ref extraction: both T011 and T012 must show `source_ref` and `gap_type` in their per-layer detail, and neither may be treated differently from an ordinary task in Layers 1–4.
 
 ### Phantom Summary Scorecard
 
 | Verdict | Count |
 |---------|-------|
 | ✅ VERIFIED | 4 |
-| 🔍 PARTIAL | 4 |
+| 🔍 PARTIAL (code) | 5 |
+| 🔍 PARTIAL (record) | 1 |
 | ⚠️ WEAK | 0 |
 | ❌ NOT_FOUND | 2 |
 | ⏭️ SKIPPED | 0 |
@@ -129,6 +136,8 @@ This fixture validates that `/speckit.verify-tasks` can handle 50 completed task
 - **SC-DEAD**: Symbol exists with real implementation but is never called/imported by any other file
 - **SC-STUB**: Symbol exists but body is a stub (hardcoded return, passthrough, or hollow logic)
 - **SC-DEAD+STUB**: Both dead code and stub body
+
+All scalability `PARTIAL` verdicts are `🔍 PARTIAL (code)`: the symbol is dead or stubbed, never merely misdescribed.
 
 ### Scalability Expected Verdicts
 
@@ -229,7 +238,7 @@ Valid fixture names: `phantom-tasks`, `genuine-tasks`, `edge-cases`, `scalabilit
 
 | Fixture | Pass Condition |
 |---------|---------------|
-| **phantom-tasks** | T005, T010 are `NOT_FOUND`; T006, T007, T008, T009 are `PARTIAL`; T001–T004 are `VERIFIED` |
+| **phantom-tasks** | T005, T010 are `NOT_FOUND`; T006, T007, T008, T009, T012 are `PARTIAL (code)`; T011 is `PARTIAL (record)`; T001–T004 are `VERIFIED`; T011 and T012 rows show their parsed source-ref and gap-type |
 | **genuine-tasks** | All 10 tasks are `VERIFIED`; zero `NOT_FOUND` verdicts |
 | **edge-cases** | EC001, EC005, EC007 are `SKIPPED`; EC005.1, EC005.2, EC008 are `NOT_FOUND`; `WARNING` emitted for EC003 missing ID |
-| **scalability** | 42 `VERIFIED`, 8 `PARTIAL` (T007, T010, T017, T018, T019, T025, T033, T048); zero `NOT_FOUND`; zero `SKIPPED` |
+| **scalability** | 42 `VERIFIED`, 8 `PARTIAL (code)` (T007, T010, T017, T018, T019, T025, T033, T048); zero `PARTIAL (record)`; zero `NOT_FOUND`; zero `SKIPPED` |

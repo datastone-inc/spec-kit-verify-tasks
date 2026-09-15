@@ -9,7 +9,7 @@
 # Usage: ./setup-fixture.sh <fixture-name>
 #
 # FIXTURE NAMES:
-#   phantom-tasks    10 tasks: 5 genuine + 5 planted phantoms
+#   phantom-tasks    12 tasks: 4 genuine + 6 planted phantoms + 2 convergence-phase tasks
 #   genuine-tasks    10 tasks: all genuinely implemented
 #   edge-cases       Behavioral-only, malformed, glob, and multi-file tasks
 #   scalability      50 tasks: session overflow stress test

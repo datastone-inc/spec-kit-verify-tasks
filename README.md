@@ -32,6 +32,8 @@ When a feature is marked "done" in `tasks.md`, there is no automatic check that 
 
 Each task receives one of five verdicts: `✅ VERIFIED`, `🔍 PARTIAL`, `⚠️ WEAK`, `❌ NOT_FOUND`, or `⏭️ SKIPPED`.
 
+A `🔍 PARTIAL` verdict also says which loop to enter. `PARTIAL (code)` means the work is missing, stubbed, or unwired and the task should be demoted back to `[ ]`. `PARTIAL (record)` means the code is there and only the task's own text or note is wrong: a renamed file, a symbol that lives somewhere other than where the task says, or a claim the tree does not support. When the cascade cannot tell, it tags `code`.
+
 The four mechanical layers can only grep. A task whose claim is "the suite is green" has nothing to grep, so a **test gate** runs alongside them: when the completed task list names a canonical test command (`make check`, `pytest`, `cargo test`, `npm test`, or a runner named in the repository's agent guidance) and the environment can run it, the command runs it once in the background and records the exit status and summary lines in the report header. A task whose only claim is that run is then `✅ VERIFIED (by execution)` rather than `⚠️ WEAK`. The gate never fabricates a run and never improvises a missing lab; when the check cannot run, the report says so and the layers stand as written.
 
 ## Installation
@@ -39,7 +41,7 @@ The four mechanical layers can only grep. A task whose claim is "the suite is gr
 `verify-tasks` is listed in the spec-kit [community catalog](https://github.com/github/spec-kit/blob/main/extensions/catalog.community.json). Discover it with `specify extension search verify-tasks`, then install using the download URL:
 
 ```sh
-specify extension add verify-tasks --from https://github.com/datastone-inc/spec-kit-verify-tasks/archive/refs/tags/v1.1.0.zip
+specify extension add verify-tasks --from https://github.com/datastone-inc/spec-kit-verify-tasks/archive/refs/tags/v1.2.0.zip
 ```
 
 > The community catalog is discovery-only (`install_allowed: false`). The bare command `specify extension add verify-tasks` works only when the extension is in a catalog with `install_allowed: true` — for example, your organization's curated `catalog.json` or a custom catalog added via `specify extension catalog add`.
@@ -61,25 +63,34 @@ specify extension add --dev /path/to/spec-kit-verify-tasks
 
 `/speckit.verify-tasks` is an alias. The canonical three-part name is `speckit.verify-tasks.run`, and both are installed, so `/speckit.verify-tasks.run` works too. Agents that use a hyphen separator see `/speckit-verify-tasks` and `/speckit-verify-tasks-run`. spec-kit 0.4.3 briefly rejected two-part aliases at install time; 0.5.1 (2026-04-08) restored them, and the extension requires a later version than that.
 
-> 💡 **Recommended: run in a fresh agent session.** The agent that ran `/speckit.implement` carries context that biases it toward confirming its own work. Running `/speckit.verify-tasks` in a separate session produces more reliable results.
+> 💡 **Recommended: run in a fresh agent session.** The agent that ran `/speckit.implement` carries context that biases it toward confirming its own work. Running `/speckit.verify-tasks` in a separate session produces more reliable results. The same applies to `/speckit.converge`: the agent that implemented is a poor judge of its own coverage, so run converge in a fresh session too.
 
-### Automatic hook
+### Automatic hooks
 
-After `/speckit.implement` finishes, you will be prompted automatically:
+The extension registers two optional hooks:
 
-> Run `/speckit.verify-tasks` in a **fresh agent session** to check for phantom completions.
+| Hook | Fires after | Prompt |
+|------|-------------|--------|
+| `after_implement` | `/speckit.implement` | Run verify-tasks in a fresh session to check for phantom completions |
+| `after_converge` | `/speckit.converge` | Converged? Run verify-tasks in a fresh session as the final gate before opening a PR |
 
-The hook is optional — open a new session and run `/speckit.verify-tasks` there.
+Both are optional: the core command prints the prompt and nothing runs until you open a new session and run `/speckit.verify-tasks` there. The `after_converge` hook is the one that matters in the implement → converge → implement loop. Tasks that converge appends get implemented and marked `[X]` too, and those marks need verifying. When converge reports Converged, verify-tasks is the final gate before a PR.
 
-To disable the hook, set `enabled: false` in `extensions.yml`:
+To disable a hook, set `enabled: false` on the extension's entry under that hook in `.specify/extensions.yml`:
 
 ```yaml
 hooks:
   after_implement:
-    enabled: false   # set to true to re-enable
+    - extension: verify-tasks
+      command: speckit.verify-tasks.run
+      enabled: false   # set to true to re-enable
+  after_converge:
+    - extension: verify-tasks
+      command: speckit.verify-tasks.run
+      enabled: false
 ```
 
-To re-enable, set `enabled: true` (or remove the line — `enabled: true` is the default).
+To re-enable, set `enabled: true` (or remove the line — a hook without an `enabled` field is enabled).
 
 ### Options
 
@@ -99,23 +110,24 @@ To re-enable, set `enabled: true` (or remove the line — `enabled: true` is the
 
 The command writes `verify-tasks-report.md` into the feature directory (`$FEATURE_DIR/`) and prints a confirmation. The report contains:
 
-1. **Summary scorecard**: counts per verdict level
-2. **Flagged items**: `NOT_FOUND`, `PARTIAL`, `WEAK` tasks with per-layer detail
+1. **Summary scorecard**: counts per verdict level, with `PARTIAL` split into `code` and `record`
+2. **Flagged items**: `NOT_FOUND`, `PARTIAL (code)`, `PARTIAL (record)`, `WEAK` tasks with per-layer detail
 3. **Verified items**: `VERIFIED` and `SKIPPED` tasks
 
 ### Interactive walkthrough
 
-After the report is written, the command enters a sequential walkthrough for each flagged item in severity order (`NOT_FOUND` first, then `PARTIAL`, then `WEAK`). For each item it shows the evidence gap and offers three options:
+After the report is written, the command enters a sequential walkthrough for each flagged item in severity order (`NOT_FOUND` first, then `PARTIAL (code)`, then `PARTIAL (record)`, then `WEAK`). For each item it shows the evidence gap and offers four options:
 
 | Option | What it does |
 |--------|--------------|
 | **I** (Investigate) | Reads referenced files, runs additional searches, and outputs a detailed analysis of the gap |
-| **F** (Fix) | Proposes a specific minimal fix; does not apply it until you confirm with `y` |
+| **F** (Fix) | Proposes a specific minimal fix; does not apply it until you confirm with `y`. For a `PARTIAL (record)` item the fix is to the task's own line or note, not to code |
+| **D** (Demote) | Proposes flipping the task's checkbox from `[X]` to `[ ]`; applies it only after you confirm with `y`. One character changes: no renumbering, reordering, deleting, or text edits, and never a `## Phase N: Convergence` header. The task re-enters the `/speckit.converge` → `/speckit.implement` loop. The right disposition for `NOT_FOUND` and `PARTIAL (code)` |
 | **S** (Skip) | Moves to the next flagged item |
 
 Reply `done` at any point to end the walkthrough early. The agent presents exactly one item per turn and never reveals future items in advance.
 
-After the walkthrough completes, a `## Walkthrough Log` section is appended to the report with the disposition of each flagged item (investigated, fix proposed, skipped). The original scorecard, Flagged Items and Verified Items sections are never modified — they are the audit record, and a row that was `PARTIAL` before the walkthrough stays `PARTIAL` there even if a fix was applied; the disposition goes in the log. If fixes were applied, re-run `/speckit.verify-tasks` for a clean re-evaluation.
+After the walkthrough completes, a `## Walkthrough Log` section is appended to the report with the disposition of each flagged item (investigated, fix proposed, demoted, skipped). The original scorecard, Flagged Items and Verified Items sections are never modified — they are the audit record, and a row that was `PARTIAL` before the walkthrough stays `PARTIAL` there even if a fix was applied; the disposition goes in the log. If fixes were applied, re-run `/speckit.verify-tasks` for a clean re-evaluation. If tasks were demoted, run `/speckit.converge` and `/speckit.implement`, then `/speckit.verify-tasks` again in a fresh session.
 
 ## Repository structure
 
@@ -134,7 +146,7 @@ specs/
     contracts/
 tests/
   fixtures/
-    phantom-tasks/             # 10 tasks, 5 genuine + 5 planted phantoms
+    phantom-tasks/             # 12 tasks, 4 genuine + 6 planted phantoms + 2 convergence-phase tasks
     genuine-tasks/             # 10 tasks, all genuinely implemented
     edge-cases/                # Behavioral-only, malformed, and glob tasks
     scalability/               # 50-task synthetic fixture (session overflow test)
@@ -165,6 +177,22 @@ See [`.specify/memory/constitution.md`](.specify/memory/constitution.md) for the
 
 ## Complementary to `verify-tasks`
 
+### The `/speckit.converge` core command
+
+spec-kit's `/speckit.converge` (0.11.2 and later) asks: "What does the code still lack?" It reads every requirement, success criterion, acceptance scenario, plan decision, and constitution principle, assesses the present tree, and appends the unmet work as new tasks under a `## Phase N: Convergence` heading so `/speckit.implement` can finish it. It never reads git and never reports on whether a `[X]` was honest.
+
+`verify-tasks` asks the opposite question: "Is each `[X]` true?" It never reads `[ ]` tasks and never finds work that has no task.
+
+| | `/speckit.converge` | `verify-tasks` |
+|---|---|---|
+| **Direction** | Intent → code: what is not built | Record → code: what is falsely marked built |
+| **Input** | Spec, plan, constitution, and all tasks regardless of mark | `[X]` tasks only |
+| **Evidence** | Present tree, no git | Tree, git diff, callers, and a test run |
+| **Catches** | Requirements with no task, unfinished `[ ]` work, unrequested code | Stubs, dead code, stale or false task text, claims the tree does not support |
+| **Writes** | Appends tasks to `tasks.md` | A report; on confirmation, one checkbox or one task line |
+
+They are complementary, and the cascade between them is a loop: implement, converge, implement the convergence tasks, converge again until it reports Converged, then run `verify-tasks` in a fresh session as the final gate. Convergence tasks carry a `per FR-003 (missing)` source-ref, and `verify-tasks` reads that exact requirement in Layer 5 instead of searching the spec for the concept. A `PARTIAL (code)` finding goes back into the loop by demoting the task (walkthrough action **D**). A `PARTIAL (record)` finding is fixed in place.
+
 ### The `spec-kit-verify` community extension
 
 [spec-kit-verify](https://github.com/ismaelJimenez/spec-kit-verify) asks: "Does the implementation satisfy the spec?" It's a broad quality gate that checks requirement coverage, test coverage, spec intent alignment, and constitution compliance.
@@ -193,6 +221,7 @@ The `verify-tasks` command confirms that code *exists and is wired up*, not that
 - `git` (optional; layers 2 and 4 are skipped gracefully if unavailable)
 - The spec-kit prerequisites script at `.specify/scripts/bash/check-prerequisites.sh`
 - The following spec-kit core commands must have been run first: `speckit.specify`, `speckit.plan`, `speckit.tasks`, `speckit.implement`. These produce the artifacts (`tasks.md`, `plan.md`, `spec.md`) that `/speckit.verify-tasks` reads.
+- `speckit.converge` is optional. The `after_converge` hook and the Layer 5 source-ref rule only matter when you use it.
 
 ## Troubleshooting
 
