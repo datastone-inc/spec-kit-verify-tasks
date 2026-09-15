@@ -1,0 +1,29 @@
+# Files spec-kit must NOT copy into a user's .specify/extensions/verify-tasks/.
+# spec-kit reads this file (gitignore syntax) at install time. The install
+# needs only extension.yml, commands/, README.md, CHANGELOG.md, and LICENSE.
+
+# This repo's own spec-kit project (its constitution, templates, scripts, specs)
+.specify/
+specs/
+.github/
+
+# Development and test material
+tests/
+assets/
+.vscode/
+.markdownlint.json
+
+# Git
+.git/
+.gitignore
+
+# OS and editor artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+
+# Logs and environment
+*.log
+.env
+.env.*

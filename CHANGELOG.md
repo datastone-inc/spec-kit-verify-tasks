@@ -22,6 +22,10 @@ spec-kit 0.11.2 added `/speckit.converge`, which assesses the tree against the s
 - **Scope statement and converge handoff.** The advisory now says what verify-tasks does not do (`[ ]` tasks, spec coverage, unrequested code, constitution compliance) and points at converge; the command frontmatter offers a converge handoff next to the implement one.
 - **Convergence-phase fixture tasks.** `tests/fixtures/phantom-tasks/` gains a `## Phase 2: Convergence` section with one planted code gap (T012) and one planted record gap (T011); `tests/expected-verdicts.md` covers both.
 
+### Fixed
+
+- **Installs no longer copy the whole repository.** The repo shipped a `.specifyignore`, a file spec-kit never reads, so every archive install copied this repo's own `.specify/` project (constitution, templates, scripts), `specs/`, `tests/`, `.github/` prompts and `.vscode/` into the user's `.specify/extensions/verify-tasks/`. Nothing consumed them, but the "prevent recursive installation" intent never worked. It is now `.extensionignore`, the name spec-kit honours, and an archive install copies only `extension.yml`, `commands/`, `README.md`, `CHANGELOG.md`, and `LICENSE`. Verified against spec-kit 1.0.6.
+
 ### Changed
 
 - **Hook blocks adopt the spec-kit 1.0.6 boilerplate.** An unparseable `.specify/extensions.yml` is reported rather than skipped silently; a hook without an `enabled` field is enabled; dots in hook command names become hyphens in the invocation; a mandatory hook must actually be invoked, not just printed.
